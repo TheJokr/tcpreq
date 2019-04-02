@@ -4,6 +4,7 @@ import math
 
 from .options import BaseOption, parse_options
 from .checksum import calc_checksum
+from ..types import IPAddressType
 
 
 # Segments are immutable
@@ -12,12 +13,12 @@ class Segment(Sized, SupportsBytes):
     _TCP_HEAD: ClassVar[struct.Struct] = struct.Struct(">HHIIBBHHH")
     assert _TCP_HEAD.size == 20
 
-    # src and dst are (addr: bytes, port: int) tuples. flags int takes precedence over bools.
-    def __init__(self, src: Tuple[bytes, int], dst: Tuple[bytes, int], seq: int, window: int,
-                 ack_seq: int = 0, cwr: bool = False, ece: bool = False, urg: bool = False,
-                 ack: bool = False, psh: bool = False, rst: bool = False, syn: bool = False,
-                 fin: bool = False, flags: int = None, checksum: bytes = None, up: int = 0,
-                 options: Sequence[BaseOption] = (), payload: bytes = b'') -> None:
+    # src, dst are (addr: IPAddressType, port: int) tuples. flags int takes precedence over bools.
+    def __init__(self, src: Tuple[IPAddressType, int], dst: Tuple[IPAddressType, int],
+                 seq: int, window: int, ack_seq: int = 0, cwr: bool = False, ece: bool = False,
+                 urg: bool = False, ack: bool = False, psh: bool = False, rst: bool = False,
+                 syn: bool = False, fin: bool = False, flags: int = None, checksum: bytes = None,
+                 up: int = 0, options: Sequence[BaseOption] = (), payload: bytes = b'') -> None:
         opt_len = sum(len(o) for o in options)
         head_rows = 5
         if opt_len:
@@ -40,17 +41,18 @@ class Segment(Sized, SupportsBytes):
 
         if checksum is None:
             # Checksum field is explicitly set to zero in _TCP_HEAD.pack_into call
-            checksum = calc_checksum(src[0], dst[0], head, payload)
+            checksum = calc_checksum(src[0].packed, dst[0].packed, head, payload)
         head[16:18] = checksum
 
         self._raw = bytes(head) + payload
         self._options = tuple(options)
 
-    def make_reply(self, src_addr: bytes, dst_addr: bytes, window: int, seq: int = None,
-                   ack_seq: int = None, cwr: bool = False, ece: bool = False, urg: bool = False,
-                   ack: bool = False, psh: bool = False, rst: bool = False, syn: bool = False,
-                   fin: bool = False, flags: int = None, checksum: bytes = None, up: int = 0,
-                   options: Sequence[BaseOption] = (), payload: bytes = b'') -> "Segment":
+    def make_reply(self, src_addr: IPAddressType, dst_addr: IPAddressType, window: int,
+                   seq: int = None, ack_seq: int = None, cwr: bool = False, ece: bool = False,
+                   urg: bool = False, ack: bool = False, psh: bool = False, rst: bool = False,
+                   syn: bool = False, fin: bool = False, flags: int = None, checksum: bytes = None,
+                   up: int = 0, options: Sequence[BaseOption] = (),
+                   payload: bytes = b'') -> "Segment":
         if seq is None:
             if self.flags & 0x10:
                 seq = self.ack_seq
