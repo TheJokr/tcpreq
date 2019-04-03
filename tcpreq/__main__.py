@@ -33,6 +33,25 @@ def _select_addrs() -> Tuple[IPv4Address, IPv6Address]:
     return IPv4Address(res[0]), IPv6Address(res[1])
 
 
+def _process_results(targets: Sequence[Tuple[AnyIPAddress, int]],
+                     futures: Sequence[asyncio.Future[TestResult]]) -> None:
+    for tgt, f in zip(targets, futures):
+        tgt_str = "{0[0]}\t{0[1]}\t".format(tgt)
+        try:
+            res = f.result()
+        except asyncio.InvalidStateError as e:
+            raise ValueError("Futures are not done yet") from e
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            print(tgt_str + str(e))
+        else:
+            out = tgt_str + res.status.name
+            if res.reason is not None:
+                out += ": " + res.reason
+            print(out)
+
+
 def main() -> None:
     args = parser.parse_args()
     loop = asyncio.SelectorEventLoop()
@@ -65,7 +84,10 @@ def main() -> None:
                 fut.add_done_callback(lambda f: ipv4_plex.unregister_test(t))
             all_futs.append(fut)
 
-        loop.run_until_complete(asyncio.gather(*all_futs, loop=loop))
+        # Wait for all futures at once instead of using asyncio.as_completed
+        # to allow linking futures to their targets in _process_results
+        loop.run_until_complete(asyncio.wait(all_futs, loop=loop))
+        _process_results(args.target, all_futs)
         time.sleep(5)
 
 
