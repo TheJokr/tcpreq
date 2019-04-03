@@ -56,15 +56,16 @@ def main() -> None:
     active_tests: Sequence[Type[BaseTest]] = args.test or DEFAULT_TESTS
     for idx, test in enumerate(active_tests):
         all_futs: List[asyncio.Future] = []
+        src_port = _BASE_PORT + idx
 
         for tgt in args.target:
             if isinstance(tgt[0], IPv6Address):
-                t = test((ipv6_src, _BASE_PORT + idx), tgt, loop=loop)
+                t = test((ipv6_src, src_port), tgt, loop=loop)
                 ipv6_plex.register_test(t)
                 fut = loop.create_task(t.run())
                 fut.add_done_callback(functools.partial(_unregister_test_cb, ipv6_plex, t))
             else:
-                t = test((ipv4_src, _BASE_PORT + idx), tgt, loop=loop)
+                t = test((ipv4_src, src_port), tgt, loop=loop)
                 ipv4_plex.register_test(t)
                 fut = loop.create_task(t.run())
                 fut.add_done_callback(functools.partial(_unregister_test_cb, ipv4_plex, t))
