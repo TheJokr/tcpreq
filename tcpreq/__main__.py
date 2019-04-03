@@ -1,12 +1,11 @@
 from typing import Type, Sequence, List, Tuple
 import time
 import random
-import functools
 from ipaddress import IPv4Address, IPv6Address
 import socket
 import asyncio
 
-from .types import IPAddressType, AnyIPAddress
+from .types import AnyIPAddress
 from .opts import parser
 from .net import TestMultiplexer
 from .tests import BaseTest, DEFAULT_TESTS, TestResult
@@ -34,11 +33,6 @@ def _select_addrs() -> Tuple[IPv4Address, IPv6Address]:
     return IPv4Address(res[0]), IPv6Address(res[1])
 
 
-def _unregister_test_cb(plex: TestMultiplexer[IPAddressType], test: BaseTest[IPAddressType],
-                        fut: asyncio.Future) -> None:
-    return plex.unregister_test(test)
-
-
 def main() -> None:
     args = parser.parse_args()
     loop = asyncio.SelectorEventLoop()
@@ -63,12 +57,12 @@ def main() -> None:
                 t = test((ipv6_src, src_port), tgt, loop=loop)
                 ipv6_plex.register_test(t)
                 fut = loop.create_task(t.run())
-                fut.add_done_callback(functools.partial(_unregister_test_cb, ipv6_plex, t))
+                fut.add_done_callback(lambda f: ipv6_plex.unregister_test(t))
             else:
                 t = test((ipv4_src, src_port), tgt, loop=loop)
                 ipv4_plex.register_test(t)
                 fut = loop.create_task(t.run())
-                fut.add_done_callback(functools.partial(_unregister_test_cb, ipv4_plex, t))
+                fut.add_done_callback(lambda f: ipv4_plex.unregister_test(t))
             all_futs.append(fut)
 
         loop.run_until_complete(asyncio.gather(*all_futs, loop=loop))
