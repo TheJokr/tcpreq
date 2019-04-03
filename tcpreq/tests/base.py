@@ -2,6 +2,7 @@ from abc import abstractmethod
 from typing import Generic, Tuple, Optional
 import asyncio
 
+from .result import TestResult
 from ..types import IPAddressType
 from ..tcp import Segment
 
@@ -25,5 +26,5 @@ class BaseTest(Generic[IPAddressType]):
         await self.send_queue.put((seg, self.dst[0]))
 
     @abstractmethod
-    async def run(self) -> None:
+    async def run(self) -> TestResult:
         pass

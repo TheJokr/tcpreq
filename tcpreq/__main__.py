@@ -9,7 +9,7 @@ import asyncio
 from .types import IPAddressType, AnyIPAddress
 from .opts import parser
 from .net import TestMultiplexer
-from .tests import BaseTest, DEFAULT_TESTS
+from .tests import BaseTest, DEFAULT_TESTS, TestResult
 
 # Use a random ephemeral port as source
 _BASE_PORT = random.randint(49152, 61000)
@@ -55,7 +55,7 @@ def main() -> None:
     # Run tests sequentially
     active_tests: Sequence[Type[BaseTest]] = args.test or DEFAULT_TESTS
     for idx, test in enumerate(active_tests):
-        all_futs: List[asyncio.Future] = []
+        all_futs: List[asyncio.Future[TestResult]] = []
         src_port = _BASE_PORT + idx
 
         for tgt in args.target:
