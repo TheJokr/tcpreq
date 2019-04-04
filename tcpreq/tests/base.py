@@ -1,5 +1,5 @@
 from abc import abstractmethod
-from typing import Generic, Tuple, Optional
+from typing import Generic, Awaitable, Tuple, Optional
 import asyncio
 
 from .result import TestResult
@@ -20,10 +20,13 @@ class BaseTest(Generic[IPAddressType]):
         self.send_queue: Optional[asyncio.Queue[Tuple[Segment, IPAddressType]]] = None
         self._loop = loop
 
-    async def send(self, seg: Segment) -> None:
+    def send(self, seg: Segment) -> Awaitable[None]:
         if self.send_queue is None:
             raise RuntimeError("Test is not registered with any multiplexer")
-        await self.send_queue.put((seg, self.dst[0]))
+        return self.send_queue.put((seg, self.dst[0]))
+
+    def receive(self, timeout: float) -> Awaitable[Segment]:
+        return asyncio.wait_for(self.recv_queue.get(), timeout, loop=self._loop)
 
     @abstractmethod
     async def run(self) -> TestResult:
