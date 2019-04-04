@@ -39,8 +39,9 @@ def _select_addrs() -> Tuple[IPv4Address, IPv6Address]:
     return IPv4Address(res[0]), IPv6Address(res[1])
 
 
-def _process_results(targets: Sequence[Tuple[AnyIPAddress, int]],
+def _process_results(test: Type[BaseTest], targets: Sequence[Tuple[AnyIPAddress, int]],
                      futures: Sequence[asyncio.Future[TestResult]]) -> None:
+    print("{} results:".format(test.__name__))
     for tgt, f in zip(targets, futures):
         tgt_str = "{0[0]}\t{0[1]}\t".format(tgt)
         try:
@@ -93,7 +94,7 @@ def main() -> None:
         # Wait for all futures at once instead of using asyncio.as_completed
         # to allow linking futures to their targets in _process_results
         loop.run_until_complete(asyncio.wait(all_futs, loop=loop))
-        _process_results(args.target, all_futs)
+        _process_results(test, args.target, all_futs)
         time.sleep(5)
 
 
