@@ -16,12 +16,18 @@ _BASE_PORT = random.randint(49152, 61000)
 
 def _select_addrs() -> Tuple[IPv4Address, IPv6Address]:
     host = socket.gethostname()
-    res = []
+    res: List[str] = []
 
     for v, fam in ((4, socket.AF_INET), (6, socket.AF_INET6)):
         # Remove scope ID from address if present
         addrs = [ai[4][0].rsplit("%", 1)[0] for ai
                  in socket.getaddrinfo(host, None, fam, socket.SOCK_RAW, socket.IPPROTO_TCP)]
+        if not addrs:
+            raise RuntimeError("No IPv{} address available".format(v))
+        elif len(addrs) == 1:
+            res.append(addrs[0])
+            continue
+
         print("Available IPv{} addresses:".format(v))
         print("\n".join("{}) ".format(idx + 1) + a for idx, a in enumerate(addrs)))
 
