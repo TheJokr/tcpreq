@@ -64,7 +64,7 @@ def main() -> None:
     loop = asyncio.SelectorEventLoop()
 
     # Set source IP addresses
-    addrs: Sequence[AnyIPAddress] = args.listen or _select_addrs()
+    addrs: Sequence[AnyIPAddress] = args.bind or _select_addrs()
     ipv4_src: IPv4Address = next(a for a in addrs if isinstance(a, IPv4Address))
     ipv6_src: IPv6Address = next(a for a in addrs if isinstance(a, IPv6Address))
 

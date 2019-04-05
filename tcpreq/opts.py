@@ -33,7 +33,7 @@ parser = argparse.ArgumentParser(
 )
 parser.add_argument("target", nargs="+", type=_parse_target,
                     help="a target to test (e.g. 203.0.113.1:8753 or [2001:db8::1]:4763)")
-parser.add_argument("-l", "--listen", nargs=2, type=ipaddress.ip_address, metavar="addr",
+parser.add_argument("-b", "--bind", nargs=2, type=ipaddress.ip_address, metavar="addr",
                     help="an IPv4 and an IPv6 address to bind to")
 parser.add_argument("-T", "--test", action="append", type=_parse_test, metavar="TestClass",
                     help="A test to perform (subclass of tcpreq.tests.BaseTest). "
