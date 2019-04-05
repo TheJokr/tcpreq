@@ -1,8 +1,8 @@
-from typing import TypeVar, Type, Sized, SupportsBytes, Dict, Union, Generator
+from typing import TypeVar, Type, Dict, Union, Generator
 
 
 # Options are immutable
-class BaseOption(Sized, SupportsBytes):
+class BaseOption(object):
     """Common base class for all options."""
     def __init__(self, data: bytes) -> None:
         self._raw = data

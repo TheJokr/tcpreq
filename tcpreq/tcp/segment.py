@@ -1,4 +1,4 @@
-from typing import Sized, SupportsBytes, ClassVar, Sequence, Tuple
+from typing import ClassVar, Sequence, Tuple
 import struct
 import math
 
@@ -8,7 +8,7 @@ from ..types import IPAddressType
 
 
 # Segments are immutable
-class Segment(Sized, SupportsBytes):
+class Segment(object):
     # src_port, dst_port, seq, ack_seq, data offset/reserved bits, flags, window, checksum, up
     _TCP_HEAD: ClassVar[struct.Struct] = struct.Struct(">HHIIBBHHH")
     assert _TCP_HEAD.size == 20

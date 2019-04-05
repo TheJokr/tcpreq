@@ -16,8 +16,8 @@ class BaseTest(Generic[IPAddressType]):
 
         self.src: Tuple[IPAddressType, int] = src
         self.dst: Tuple[IPAddressType, int] = dst
-        self.recv_queue: asyncio.Queue[Segment] = asyncio.Queue(loop=loop)
-        self.send_queue: Optional[asyncio.Queue[Tuple[Segment, IPAddressType]]] = None
+        self.recv_queue: "asyncio.Queue[Segment]" = asyncio.Queue(loop=loop)
+        self.send_queue: Optional["asyncio.Queue[Tuple[Segment, IPAddressType]]"] = None
         self._loop = loop
 
     def send(self, seg: Segment) -> Awaitable[None]:

@@ -40,7 +40,7 @@ def _select_addrs() -> Tuple[IPv4Address, IPv6Address]:
 
 
 def _process_results(test: Type[BaseTest], targets: Sequence[Tuple[AnyIPAddress, int]],
-                     futures: Sequence[asyncio.Future[TestResult]]) -> None:
+                     futures: Sequence["asyncio.Future[TestResult]"]) -> None:
     print("{} results:".format(test.__name__))
     for tgt, f in zip(targets, futures):
         tgt_str = "{0[0]}\t{0[1]}\t".format(tgt)
@@ -75,7 +75,7 @@ def main() -> None:
     # Run tests sequentially
     active_tests: Sequence[Type[BaseTest]] = args.test or DEFAULT_TESTS
     for idx, test in enumerate(active_tests):
-        all_futs: List[asyncio.Future[TestResult]] = []
+        all_futs: List["asyncio.Future[TestResult]"] = []
         src_port = _BASE_PORT + idx
 
         for tgt in args.target:

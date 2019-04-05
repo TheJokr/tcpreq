@@ -31,8 +31,8 @@ class TestMultiplexer(Generic[IPAddressType]):
 
         self._sock = sock
         self._src_addr: IPAddressType = src
-        self._recv_queue_map: Dict[Tuple[int, bytes, int], asyncio.Queue[Segment]] = {}
-        self._send_queue: asyncio.Queue[Tuple[Segment, IPAddressType]] = asyncio.Queue(loop=loop)
+        self._recv_queue_map: Dict[Tuple[int, bytes, int], "asyncio.Queue[Segment]"] = {}
+        self._send_queue: "asyncio.Queue[Tuple[Segment, IPAddressType]]" = asyncio.Queue(loop=loop)
         self._send_next: Optional[Tuple[bytes, Tuple[str, int]]] = None
         self._loop = loop
 
