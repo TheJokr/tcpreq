@@ -59,6 +59,8 @@ def _process_results(test: Type[BaseTest], targets: Sequence[Tuple[AnyIPAddress,
             print(out)
 
 
+# Make sure to prevent the kernel TCP stack from interfering
+# See e.g. tcpreq-nft.conf for an nfttables script
 def main() -> None:
     args = parser.parse_args()
     loop = asyncio.SelectorEventLoop()
