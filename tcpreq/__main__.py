@@ -1,6 +1,7 @@
 from typing import Type, Sequence, List, Tuple
 import time
 import random
+import itertools
 from ipaddress import IPv4Address, IPv6Address
 import socket
 import asyncio
@@ -63,7 +64,14 @@ def _process_results(test: Type[BaseTest], targets: Sequence[Tuple[AnyIPAddress,
 # See e.g. tcpreq-nft.conf for an nfttables script
 def main() -> None:
     args = parser.parse_args()
-    loop = asyncio.SelectorEventLoop()
+
+    # Aggregate targets from multiple sources
+    targets: List[Tuple[AnyIPAddress, int]] = list(args.target)
+    targets.extend(itertools.chain.from_iterable(args.nmap))
+    if not targets:
+        parser.print_usage()
+        print(parser.prog + ": error: at least one target is required")
+        return
 
     # Set source IP addresses
     addrs: Sequence[AnyIPAddress] = args.bind or _select_addrs()
@@ -71,6 +79,7 @@ def main() -> None:
     ipv6_src: IPv6Address = next(a for a in addrs if isinstance(a, IPv6Address))
 
     # Setup sockets/multiplexers
+    loop = asyncio.SelectorEventLoop()
     ipv4_plex = TestMultiplexer(ipv4_src, loop=loop)
     ipv6_plex = TestMultiplexer(ipv6_src, loop=loop)
 
@@ -80,7 +89,7 @@ def main() -> None:
         all_futs: List["asyncio.Future[TestResult]"] = []
         src_port = _BASE_PORT + idx
 
-        for tgt in args.target:
+        for tgt in targets:
             if isinstance(tgt[0], IPv6Address):
                 t = test((ipv6_src, src_port), tgt, loop=loop)
                 ipv6_plex.register_test(t)
@@ -96,7 +105,7 @@ def main() -> None:
         # Wait for all futures at once instead of using asyncio.as_completed
         # to allow linking futures to their targets in _process_results
         loop.run_until_complete(asyncio.wait(all_futs, loop=loop))
-        _process_results(test, args.target, all_futs)
+        _process_results(test, targets, all_futs)
         time.sleep(5)
 
 
