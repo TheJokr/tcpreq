@@ -18,7 +18,13 @@ class TestMultiplexer(Generic[IPAddressType]):
         sock = socket.socket(_AF_INET_MAP[src.version], socket.SOCK_RAW, socket.IPPROTO_TCP)
         sock.setblocking(False)
         if sock.family == socket.AF_INET6:
-            sock.setsockopt(_IPPROTO_IPV6, socket.IPV6_V6ONLY, 1)
+            # Raw sockets with protocol set get an EINVAL here. This is caused
+            # by the check for a non-zero inet_num socket field in
+            # https://github.com/torvalds/linux/blob/v5.0/net/ipv6/ipv6_sockglue.c#L256:L259
+            # (probably to avoid changing the option on bound sockets).
+            # SOCK_RAW sockets use that field for storing the protocol number though:
+            # https://github.com/torvalds/linux/blob/v5.0/net/ipv6/af_inet6.c#L196:L197
+            # sock.setsockopt(_IPPROTO_IPV6, socket.IPV6_V6ONLY, 1)
             read_func = self._handle_read_v6
         else:
             read_func = self._handle_read_v4
