@@ -90,16 +90,18 @@ def main() -> None:
         src_port = _BASE_PORT + idx
 
         for tgt in targets:
+            # Passing the test as a default parameter to the lambda ensures
+            # that the variable is not overwritten by further iterations of the loop
             if isinstance(tgt[0], IPv6Address):
                 t = test((ipv6_src, src_port), tgt, loop=loop)
                 ipv6_plex.register_test(t)
                 fut = loop.create_task(t.run())
-                fut.add_done_callback(lambda f: ipv6_plex.unregister_test(t))
+                fut.add_done_callback(lambda f, t=t: ipv6_plex.unregister_test(t))  # type: ignore
             else:
                 t = test((ipv4_src, src_port), tgt, loop=loop)
                 ipv4_plex.register_test(t)
                 fut = loop.create_task(t.run())
-                fut.add_done_callback(lambda f: ipv4_plex.unregister_test(t))
+                fut.add_done_callback(lambda f, t=t: ipv4_plex.unregister_test(t))  # type: ignore
             all_futs.append(fut)
 
         # Wait for all futures at once instead of using asyncio.as_completed
