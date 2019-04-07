@@ -58,26 +58,26 @@ class ChecksumTest(BaseTest):
         cur_seq = (cur_seq + 1) % 0x1_0000_0000
         try:
             # TODO: change timeout?
-            res = await self.receive(timeout=30)
+            syn_res = await self.receive(timeout=30)
         except asyncio.TimeoutError:
             return TestResult(TEST_UNK, "Timeout during handshake")
-        if res.flags & 0x04 and res.seq == 0 and res.ack_seq == cur_seq:
+        if syn_res.flags & 0x04 and syn_res.seq == 0 and syn_res.ack_seq == cur_seq:
             return TestResult(TEST_FAIL, "RST in reply to SYN during handshake")
-        elif not (res.flags & 0x12):
+        elif not (syn_res.flags & 0x12):
             result = TestResult(TEST_FAIL, "Non-SYN-ACK in reply to SYN during handshake")
-        elif res.ack_seq != cur_seq:
+        elif syn_res.ack_seq != cur_seq:
             result = TestResult(TEST_FAIL, "Wrong SEQ acked in reply to SYN during handshake")
 
         if result is not None:
             # Reset connection to be sure
-            await self.send(res.make_reply(self.src[0], self.dst[0], window=0,
+            await self.send(syn_res.make_reply(self.src[0], self.dst[0], window=0,
                                            seq=-1, ack=True, rst=True))
             return result
 
         cs_wrong = False
         while not cs_wrong:
             cs = random.randrange(0, 1 << 16).to_bytes(2, "little")
-            ack_seg = res.make_reply(self.src[0], self.dst[0], window=512, ack=True, checksum=cs)
+            ack_seg = syn_res.make_reply(self.src[0], self.dst[0], window=512, ack=True, checksum=cs)
 
             seg_arr = bytearray(bytes(syn_seg))
             seg_arr[16:18] = b"\x00\x00"
@@ -87,22 +87,26 @@ class ChecksumTest(BaseTest):
         result = None
         try:
             # TODO: change timeout?
-            res = await self.receive(timeout=30)
+            ack_res = await self.receive(timeout=30)
         except asyncio.TimeoutError:
             # Dropping the segment silently is acceptable
             result = TestResult(TEST_PASS)
+            ack_res = syn_res  # For ack_res.make_reply below
         else:
-            if not (res.flags & 0x04):
+            # Retransmission of SYN-ACK is acceptable (similar to timeout)
+            if ack_res == syn_res:
+                result = TestResult(TEST_PASS)
+            elif not (ack_res.flags & 0x04):
                 result = TestResult(TEST_FAIL, "Non-RST in reply to ACK with incorrect checksum")
-            elif res.seq != ack_seg.ack_seq or res.ack_seq != ack_seg.seq:
+            elif ack_res.seq != ack_seg.ack_seq or ack_res.ack_seq != ack_seg.seq:
                 # As per RFC 793bis. TODO: Too restrictive?
                 return TestResult(TEST_FAIL, "Invalid RST in reply to ACK with incorrect checksum")
             else:
                 return TestResult(TEST_PASS)
 
         # Reset connection to be sure
-        await self.send(res.make_reply(self.src[0], self.dst[0], window=0,
-                                       seq=-1, ack=True, rst=True))
+        await self.send(ack_res.make_reply(self.src[0], self.dst[0], window=0,
+                                           seq=-1, ack=True, rst=True))
         return result
 
     async def _check_syn_resp(self, sent_seq: int) -> Optional[TestResult]:
