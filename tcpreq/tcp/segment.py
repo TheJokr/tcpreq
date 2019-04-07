@@ -110,6 +110,14 @@ class Segment(Sized, SupportsBytes):
     def __bytes__(self) -> bytes:
         return self._raw
 
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, Segment):
+            return NotImplemented
+        return self._raw == other._raw
+
+    def __hash__(self) -> int:
+        return self._raw.__hash__()
+
     @property
     def src_port(self) -> int:
         return int.from_bytes(self._raw[0:2], "big")

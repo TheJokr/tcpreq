@@ -13,6 +13,14 @@ class BaseOption(Sized, SupportsBytes):
     def __bytes__(self) -> bytes:
         return self._raw
 
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, BaseOption):
+            return NotImplemented
+        return self._raw == other._raw
+
+    def __hash__(self) -> int:
+        return self._raw.__hash__()
+
 
 class _LegacyOption(BaseOption):
     """Class for the two option kinds without a length octet."""
