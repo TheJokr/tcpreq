@@ -47,15 +47,18 @@ class Segment(object):
         self._raw = bytes(head) + payload
         self._options = tuple(options)
 
+    # Negative seq is used as fallback if ACK is not set (see below)
     def make_reply(self, src_addr: IPAddressType, dst_addr: IPAddressType, window: int,
                    seq: int = None, ack_seq: int = None, cwr: bool = False, ece: bool = False,
                    urg: bool = False, ack: bool = False, psh: bool = False, rst: bool = False,
                    syn: bool = False, fin: bool = False, flags: int = None, checksum: bytes = None,
                    up: int = 0, options: Sequence[BaseOption] = (),
                    payload: bytes = b'') -> "Segment":
-        if seq is None:
+        if seq is None or seq < 0:
             if self.flags & 0x10:
                 seq = self.ack_seq
+            elif seq is not None:
+                seq = -(seq + 1)
             else:
                 raise ValueError("SEQ not given and ACK not present on this segment")
 
@@ -106,6 +109,14 @@ class Segment(object):
 
     def __bytes__(self) -> bytes:
         return self._raw
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, Segment):
+            return NotImplemented
+        return self._raw == other._raw
+
+    def __hash__(self) -> int:
+        return self._raw.__hash__()
 
     @property
     def src_port(self) -> int:
