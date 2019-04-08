@@ -1,9 +1,9 @@
-from typing import Generic, Dict, Tuple, Optional
+from typing import Generic, ClassVar, Dict, Tuple, Optional
 from ipaddress import IPv4Address, IPv6Address
 import socket
 import asyncio
 
-from .types import IPAddressType, AnyIPAddress
+from .types import IPAddressType
 from .tests import BaseTest
 from .tcp import Segment
 
@@ -14,6 +14,8 @@ _IPPROTO_IPV6: int = getattr(socket, "IPPROTO_IPV6", 41)
 
 class TestMultiplexer(Generic[IPAddressType]):
     """Multiplex multiple TCP streams over a single raw IP socket."""
+    _RST_THRESHOLD: ClassVar[int] = 3
+
     def __init__(self, src: IPAddressType, loop: asyncio.AbstractEventLoop = None) -> None:
         sock = socket.socket(_AF_INET_MAP[src.version], socket.SOCK_RAW, socket.IPPROTO_TCP)
         sock.setblocking(False)
@@ -40,6 +42,7 @@ class TestMultiplexer(Generic[IPAddressType]):
         self._recv_queue_map: Dict[Tuple[int, bytes, int], "asyncio.Queue[Segment]"] = {}
         self._send_queue: "asyncio.Queue[Tuple[Segment, IPAddressType]]" = asyncio.Queue(loop=loop)
         self._send_next: Optional[Tuple[bytes, Tuple[str, int]]] = None
+        self._sent_rsts: Dict[Tuple[int, bytes, int], int] = {}
         self._loop = loop
 
     @staticmethod
@@ -63,7 +66,7 @@ class TestMultiplexer(Generic[IPAddressType]):
         del self._recv_queue_map[self._recv_queue_key(test)]
         test.send_queue = None
 
-    def _handle_read_v4(self) -> None:
+    def _handle_read_v4(self: "TestMultiplexer[IPv4Address]") -> None:
         try:
             while True:
                 # Raw IPv4 sockets include header
@@ -81,7 +84,7 @@ class TestMultiplexer(Generic[IPAddressType]):
         except BlockingIOError:
             pass
 
-    def _handle_read_v6(self) -> None:
+    def _handle_read_v6(self: "TestMultiplexer[IPv6Address]") -> None:
         try:
             while True:
                 # Raw IPv6 sockets don't include header
@@ -90,13 +93,32 @@ class TestMultiplexer(Generic[IPAddressType]):
         except BlockingIOError:
             pass
 
-    def _enqueue_segment(self, src_addr: AnyIPAddress, data: bytearray) -> None:
+    def _enqueue_segment(self, src_addr: IPAddressType, data: bytearray) -> None:
         remote_src = src_addr.packed
         try:
             seg = Segment.from_bytes(remote_src, self._src_addr.packed, data)
-            self._recv_queue_map[(seg.dst_port, remote_src, seg.src_port)].put_nowait(seg)
-        except (ValueError, KeyError):
+        except ValueError:
+            # Discard invalid segments silently
             return
+        try:
+            self._recv_queue_map[(seg.dst_port, remote_src, seg.src_port)].put_nowait(seg)
+        except KeyError:
+            return self._handle_unk_src(src_addr, seg)
+
+    def _handle_unk_src(self, src_addr: IPAddressType, seg: Segment) -> None:
+        # tcpreq always uses ephemeral ports. Don't interfere with other connections.
+        if seg.dst_port < 49152 or seg.flags & 0x04:
+            return
+
+        # Give up after sending _RST_THRESHOLD resets
+        key = (seg.dst_port, src_addr.packed, seg.src_port)
+        rsts = self._sent_rsts.get(key, 0)
+        if rsts >= self._RST_THRESHOLD:
+            return
+
+        rst_seg = seg.make_reply(self._src_addr, src_addr, window=0, seq=-1, ack=True, rst=True)
+        self._send_queue.put_nowait((rst_seg, src_addr))
+        self._sent_rsts[key] = rsts + 1
 
     def _handle_write(self) -> None:
         # Send segment dequeued last during previous invocation if present
