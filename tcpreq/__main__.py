@@ -68,6 +68,7 @@ def main() -> None:
     # Aggregate targets from multiple sources
     targets: List[Tuple[AnyIPAddress, int]] = list(args.target)
     targets.extend(itertools.chain.from_iterable(args.nmap))
+    targets.extend(itertools.chain.from_iterable(args.zmap))
     if not targets:
         parser.print_usage()
         print(parser.prog + ": error: at least one target is required")

@@ -3,6 +3,7 @@ import argparse
 from urllib.parse import urlparse
 import ipaddress
 import xml.etree.ElementTree as ET
+import csv
 
 from .types import AnyIPAddress
 from . import tests
@@ -32,6 +33,23 @@ def _parse_nmap_xml(fpath: str) -> Generator[Tuple[AnyIPAddress, int], None, Non
             yield ip_addr, int(port.get("portid"))
 
 
+def _parse_zmap_csv(fpath: str) -> Generator[Tuple[AnyIPAddress, int], None, None]:
+    reader = csv.DictReader(open(fpath, newline=''))
+    if not {"success", "saddr", "sport"}.issubset(reader.fieldnames):
+        raise ValueError("Missing at least one required key: success, saddr, sport")
+
+    for row in reader:
+        if row["success"] != "1":
+            continue
+
+        addr = row["saddr"]
+        port = row["sport"]
+        if None in (addr, port):
+            continue
+
+        yield ipaddress.ip_address(addr), int(port)
+
+
 def _parse_test(value: str) -> Type[tests.BaseTest]:
     try:
         cls = getattr(tests, value)
@@ -58,3 +76,6 @@ parser.add_argument("-T", "--test", action="append", type=_parse_test, metavar="
 parser.add_argument("--nmap", action="append", default=[], type=_parse_nmap_xml,
                     help="XML output of an Nmap TCP port scan with targets to test. "
                          "May be specified multiple times.", metavar="targets.xml")
+parser.add_argument("--zmap", action="append", default=[], type=_parse_zmap_csv,
+                    help="CSV output of a ZMap TCP port scan with targets to test. "
+                         "May be specified multiple times.", metavar="targets.csv")
