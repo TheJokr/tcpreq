@@ -4,7 +4,7 @@ import asyncio
 
 from .base import BaseTest
 from .result import TestResult, TEST_PASS, TEST_UNK, TEST_FAIL
-from ..tcp import Segment
+from ..tcp import Segment, check_window
 from ..tcp.checksum import calc_checksum
 
 
@@ -61,7 +61,7 @@ class ChecksumTest(BaseTest):
             syn_res = await self.receive(timeout=30)
         except asyncio.TimeoutError:
             return TestResult(TEST_UNK, "Timeout during handshake")
-        if syn_res.flags & 0x04 and syn_res.seq == 0 and syn_res.ack_seq == cur_seq:
+        if syn_res.flags & 0x04 and syn_res.ack_seq == cur_seq:
             return TestResult(TEST_FAIL, "RST in reply to SYN during handshake")
         elif not (syn_res.flags & 0x12):
             result = TestResult(TEST_FAIL, "Non-SYN-ACK in reply to SYN during handshake")
@@ -99,8 +99,8 @@ class ChecksumTest(BaseTest):
                 result = TestResult(TEST_PASS)
             elif not (ack_res.flags & 0x04):
                 result = TestResult(TEST_FAIL, "Non-RST in reply to ACK with incorrect checksum")
-            elif ack_res.seq != ack_seg.ack_seq or ack_res.ack_seq != ack_seg.seq:
-                # As per RFC 793bis. TODO: Too restrictive?
+            elif not check_window(ack_res.seq, ack_seg.ack_seq,
+                                  (ack_seg.ack_seq + ack_seg.window) % 0x1_0000_0000):
                 return TestResult(TEST_FAIL, "Invalid RST in reply to ACK with incorrect checksum")
             else:
                 return TestResult(TEST_PASS)
@@ -124,8 +124,7 @@ class ChecksumTest(BaseTest):
                 await self.send(res.make_reply(self.src[0], self.dst[0], window=0,
                                                seq=-1, ack=True, rst=True))
                 return TestResult(TEST_FAIL, "Non-RST in reply to SYN with incorrect checksum")
-            elif res.seq != 0 or res.ack_seq != exp_ack:
-                # As per RFC 793bis. TODO: Too restrictive?
+            elif res.ack_seq != exp_ack:
                 return TestResult(TEST_FAIL, "Invalid RST in reply to SYN with incorrect checksum")
 
         return None
