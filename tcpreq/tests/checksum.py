@@ -71,13 +71,14 @@ class ChecksumTest(BaseTest):
         if result is not None:
             # Reset connection to be sure
             await self.send(syn_res.make_reply(self.src[0], self.dst[0], window=0,
-                                           seq=-1, ack=True, rst=True))
+                                               seq=-1, ack=True, rst=True))
             return result
 
         cs_wrong = False
         while not cs_wrong:
             cs = random.randrange(0, 1 << 16).to_bytes(2, "little")
-            ack_seg = syn_res.make_reply(self.src[0], self.dst[0], window=512, ack=True, checksum=cs)
+            ack_seg = syn_res.make_reply(self.src[0], self.dst[0], window=512,
+                                         ack=True, checksum=cs)
 
             seg_arr = bytearray(bytes(syn_seg))
             seg_arr[16:18] = b"\x00\x00"
