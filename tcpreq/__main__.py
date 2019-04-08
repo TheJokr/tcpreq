@@ -89,6 +89,7 @@ def main() -> None:
     for idx, test in enumerate(active_tests):
         all_futs: List["asyncio.Future[TestResult]"] = []
         src_port = _BASE_PORT + idx
+        random.shuffle(targets)
 
         for tgt in targets:
             # Passing the test as a default parameter to the lambda ensures
