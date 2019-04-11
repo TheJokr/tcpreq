@@ -4,6 +4,7 @@ import socket
 import asyncio
 
 from .types import IPAddressType
+from .limiter import TokenBucket, OutOfTokensError
 from .tests import BaseTest
 from .tcp import Segment
 
@@ -16,7 +17,8 @@ class TestMultiplexer(Generic[IPAddressType]):
     """Multiplex multiple TCP streams over a single raw IP socket."""
     _RST_THRESHOLD: ClassVar[int] = 3
 
-    def __init__(self, src: IPAddressType, loop: asyncio.AbstractEventLoop = None) -> None:
+    def __init__(self, src: IPAddressType, send_limiter: TokenBucket,
+                 loop: asyncio.AbstractEventLoop = None) -> None:
         sock = socket.socket(_AF_INET_MAP[src.version], socket.SOCK_RAW, socket.IPPROTO_TCP)
         sock.setblocking(False)
         if sock.family == socket.AF_INET6:
@@ -42,6 +44,7 @@ class TestMultiplexer(Generic[IPAddressType]):
         self._recv_queue_map: Dict[Tuple[int, bytes, int], "asyncio.Queue[Segment]"] = {}
         self._send_queue: "asyncio.Queue[Tuple[Segment, IPAddressType]]" = asyncio.Queue(loop=loop)
         self._send_next: Optional[Tuple[bytes, Tuple[str, int]]] = None
+        self._send_limiter = send_limiter
         self._sent_rsts: Dict[Tuple[int, bytes, int], int] = {}
         self._loop = loop
 
@@ -124,8 +127,9 @@ class TestMultiplexer(Generic[IPAddressType]):
         # Send segment dequeued last during previous invocation if present
         if self._send_next is not None:
             try:
+                self._send_limiter.take()
                 self._sock.sendto(*self._send_next)
-            except BlockingIOError:
+            except (OutOfTokensError, BlockingIOError):
                 return
             else:
                 self._send_next = None
@@ -135,8 +139,9 @@ class TestMultiplexer(Generic[IPAddressType]):
                 item = self._send_queue.get_nowait()
                 data = bytes(item[0])
                 dst = (str(item[1]), 0)
+                self._send_limiter.take()
                 self._sock.sendto(data, dst)
         except asyncio.QueueEmpty:
             pass
-        except BlockingIOError:
+        except (OutOfTokensError, BlockingIOError):
             self._send_next = (data, dst)

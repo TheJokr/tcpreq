@@ -8,6 +8,7 @@ import asyncio
 
 from .types import AnyIPAddress
 from .opts import parser
+from .limiter import TokenBucket
 from .net import TestMultiplexer
 from .tests import BaseTest, DEFAULT_TESTS, TestResult
 
@@ -80,9 +81,12 @@ def main() -> None:
     ipv6_src: IPv6Address = next(a for a in addrs if isinstance(a, IPv6Address))
 
     # Setup sockets/multiplexers
+    # Both multiplexers share a token bucket with a precision of 1/8th of a second
+    # and which allows bursts of up to half a second's worth of packets
+    limiter = TokenBucket(args.rate // 8 or 1, 0.125, args.rate // 2 or 1)
     loop = asyncio.SelectorEventLoop()
-    ipv4_plex = TestMultiplexer(ipv4_src, loop=loop)
-    ipv6_plex = TestMultiplexer(ipv6_src, loop=loop)
+    ipv4_plex = TestMultiplexer(ipv4_src, limiter, loop=loop)
+    ipv6_plex = TestMultiplexer(ipv6_src, limiter, loop=loop)
 
     # Run tests sequentially
     active_tests: Sequence[Type[BaseTest]] = args.test or DEFAULT_TESTS

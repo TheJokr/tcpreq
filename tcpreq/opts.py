@@ -8,6 +8,8 @@ import csv
 from .types import AnyIPAddress
 from . import tests
 
+_INT_MULTS = {'k': 1_000, 'm': 1_000_000, 'g': 1_000_000_000}
+
 
 def _parse_target(value: str) -> Tuple[AnyIPAddress, int]:
     urlres = urlparse("//" + value)
@@ -15,6 +17,17 @@ def _parse_target(value: str) -> Tuple[AnyIPAddress, int]:
         raise ValueError("Port number is required")
 
     return ipaddress.ip_address(urlres.hostname), urlres.port
+
+
+def _parse_suffixed_int(value: str) -> int:
+    suffix = value[-1]
+    if suffix.isdigit():
+        return int(value)
+
+    try:
+        return int(value[:-1]) * _INT_MULTS[suffix.lower()]
+    except KeyError as e:
+        raise ValueError("Unknown integer suffix") from e
 
 
 def _parse_nmap_xml(fpath: str) -> Generator[Tuple[AnyIPAddress, int], None, None]:
@@ -70,6 +83,8 @@ parser.add_argument("target", nargs="*", default=[], type=_parse_target,
                     help="a target to test (e.g. 203.0.113.1:8753 or [2001:db8::1]:4763)")
 parser.add_argument("-b", "--bind", nargs=2, type=ipaddress.ip_address, metavar="addr",
                     help="an IPv4 and an IPv6 address to bind to")
+parser.add_argument("-r", "--rate", default=10_000, type=_parse_suffixed_int, metavar="pps",
+                    help="Send rate in packets per second. Supports suffixes K, M, and G.")
 parser.add_argument("-T", "--test", action="append", type=_parse_test, metavar="TestClass",
                     help="A test to perform (subclass of tcpreq.tests.BaseTest). "
                          "May be specified multiple times.")
