@@ -46,8 +46,7 @@ _T = TypeVar("_T", bound="SizedOption")
 class SizedOption(BaseOption):
     """Base class for all option kinds with a length octet."""
     def __init__(self, kind: int, payload: bytes) -> None:
-        opt_head = kind.to_bytes(1, "big")
-        opt_head += len(payload).to_bytes(1, "big")
+        opt_head = bytes((kind, len(payload)))
         super(SizedOption, self).__init__(opt_head + payload)
 
     @classmethod
