@@ -36,7 +36,7 @@ class BaseTestMultiplexer(Generic[IPAddressType]):
         self._sock = tcp_sock
         self._icmp_sock = icmp_sock
         self._src_addr: IPAddressType = src
-        self._recv_queue_map: Dict[Tuple[int, bytes, int], "asyncio.Queue[Segment]"] = {}
+        self._test_map: Dict[Tuple[int, bytes, int], "BaseTest[IPAddressType]"] = {}
         self._send_queue: "asyncio.Queue[Tuple[Segment, IPAddressType]]" = asyncio.Queue(loop=loop)
         self._send_next: Optional[Tuple[bytes, Tuple[str, int]]] = None
         self._send_limiter = send_limiter
@@ -44,7 +44,7 @@ class BaseTestMultiplexer(Generic[IPAddressType]):
         self._loop = loop
 
     @staticmethod
-    def _recv_queue_key(test: BaseTest[IPAddressType]) -> Tuple[int, bytes, int]:
+    def _test_map_key(test: BaseTest[IPAddressType]) -> Tuple[int, bytes, int]:
         # Local address is verified in register_test and handled by OS
         return test.src[1], test.dst[0].packed, test.dst[1]
 
@@ -55,13 +55,13 @@ class BaseTestMultiplexer(Generic[IPAddressType]):
             raise ValueError("Test's source address doesn't match socket's source address")
 
         test.send_queue = self._send_queue
-        self._recv_queue_map[self._recv_queue_key(test)] = test.recv_queue
+        self._test_map[self._test_map_key(test)] = test
 
     def unregister_test(self, test: BaseTest[IPAddressType]) -> None:
         if test.send_queue is not self._send_queue:
             raise ValueError("Test is not registered with this multiplexer")
 
-        del self._recv_queue_map[self._recv_queue_key(test)]
+        del self._test_map[self._test_map_key(test)]
         test.send_queue = None
 
     @abstractmethod
@@ -76,7 +76,7 @@ class BaseTestMultiplexer(Generic[IPAddressType]):
             # Discard invalid segments silently
             return
         try:
-            self._recv_queue_map[(seg.dst_port, remote_src, seg.src_port)].put_nowait(seg)
+            self._test_map[(seg.dst_port, remote_src, seg.src_port)].recv_queue.put_nowait(seg)
         except KeyError:
             return self._handle_unk_src(src_addr, seg)
 
