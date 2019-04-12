@@ -16,4 +16,5 @@ TEST_FAIL = TestResultStatus.FAIL
 
 class TestResult(NamedTuple):
     status: TestResultStatus
+    stage: Optional[int] = None
     reason: Optional[str] = None

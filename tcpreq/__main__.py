@@ -55,6 +55,8 @@ def _process_results(targets: Sequence[Tuple[AnyIPAddress, int]],
         except Exception as e:
             print(tgt_str + str(e))
         else:
+            if res.stage is not None:
+                tgt_str += "Stage {}\t".format(res.stage)
             out = tgt_str + res.status.name
             if res.reason is not None:
                 out += ": " + res.reason
