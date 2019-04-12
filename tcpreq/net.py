@@ -1,3 +1,4 @@
+from abc import abstractmethod
 from typing import Generic, ClassVar, Dict, Tuple, Optional
 from ipaddress import IPv4Address, IPv6Address
 import socket
@@ -8,35 +9,23 @@ from .limiter import TokenBucket, OutOfTokensError
 from .tests import BaseTest
 from .tcp import Segment
 
-_AF_INET_MAP = {4: socket.AF_INET, 6: socket.AF_INET6}
 # Workaround for missing attributes on Windows (IPv6 has protocol number 41)
 _IPPROTO_IPV6: int = getattr(socket, "IPPROTO_IPV6", 41)
 
 
-class TestMultiplexer(Generic[IPAddressType]):
+class BaseTestMultiplexer(Generic[IPAddressType]):
     """Multiplex multiple TCP streams over a single raw IP socket."""
     _RST_THRESHOLD: ClassVar[int] = 3
 
-    def __init__(self, src: IPAddressType, send_limiter: TokenBucket,
-                 loop: asyncio.AbstractEventLoop = None) -> None:
-        sock = socket.socket(_AF_INET_MAP[src.version], socket.SOCK_RAW, socket.IPPROTO_TCP)
+    def __init__(self, sock_fam: socket.AddressFamily, src: IPAddressType,
+                 send_limiter: TokenBucket, loop: asyncio.AbstractEventLoop = None) -> None:
+        sock = socket.socket(sock_fam, socket.SOCK_RAW, socket.IPPROTO_TCP)
         sock.setblocking(False)
-        if sock.family == socket.AF_INET6:
-            # Raw sockets with protocol set get an EINVAL here. This is caused
-            # by the check for a non-zero inet_num socket field in
-            # https://github.com/torvalds/linux/blob/v5.0/net/ipv6/ipv6_sockglue.c#L256:L259
-            # (probably to avoid changing the option on bound sockets).
-            # SOCK_RAW sockets use that field for storing the protocol number though:
-            # https://github.com/torvalds/linux/blob/v5.0/net/ipv6/af_inet6.c#L196:L197
-            # sock.setsockopt(_IPPROTO_IPV6, socket.IPV6_V6ONLY, 1)
-            read_func = self._handle_read_v6
-        else:
-            read_func = self._handle_read_v4
         sock.bind((str(src), 0))
 
         if loop is None:
             loop = asyncio.get_event_loop()
-        loop.add_reader(sock.fileno(), read_func)
+        loop.add_reader(sock.fileno(), self._handle_read)
         loop.add_writer(sock.fileno(), self._handle_write)
 
         self._sock = sock
@@ -69,34 +58,11 @@ class TestMultiplexer(Generic[IPAddressType]):
         del self._recv_queue_map[self._recv_queue_key(test)]
         test.send_queue = None
 
-    def _handle_read_v4(self: "TestMultiplexer[IPv4Address]") -> None:
-        try:
-            while True:
-                # Raw IPv4 sockets include header
-                data, src = self._sock.recvfrom(4096)  # TODO: increase if necessary
-                data = bytearray(data)
-                dlen = len(data)
+    @abstractmethod
+    def _handle_read(self) -> None:
+        pass
 
-                if dlen < 20:
-                    continue
-                head_len = (data[0] << 2) & 0b00111100  # == (data[0] & 0x0f) * 4
-                if dlen < head_len:
-                    continue
-
-                self._enqueue_segment(IPv4Address(src[0]), data[head_len:])
-        except BlockingIOError:
-            pass
-
-    def _handle_read_v6(self: "TestMultiplexer[IPv6Address]") -> None:
-        try:
-            while True:
-                # Raw IPv6 sockets don't include header
-                data, src = self._sock.recvfrom(4096)  # TODO: increase if necessary
-                self._enqueue_segment(IPv6Address(src[0]), bytearray(data))
-        except BlockingIOError:
-            pass
-
-    def _enqueue_segment(self, src_addr: IPAddressType, data: bytearray) -> None:
+    def _handle_bytes(self, src_addr: IPAddressType, data: bytearray) -> None:
         remote_src = src_addr.packed
         try:
             seg = Segment.from_bytes(remote_src, self._src_addr.packed, data)
@@ -145,3 +111,49 @@ class TestMultiplexer(Generic[IPAddressType]):
             pass
         except (OutOfTokensError, BlockingIOError):
             self._send_next = (data, dst)
+
+
+class IPv4TestMultiplexer(BaseTestMultiplexer[IPv4Address]):
+    def __init__(self, src: IPv4Address, send_limiter: TokenBucket,
+                 loop: asyncio.AbstractEventLoop = None) -> None:
+        super(IPv4TestMultiplexer, self).__init__(socket.AF_INET, src, send_limiter, loop)
+
+    def _handle_read(self) -> None:
+        try:
+            while True:
+                # Raw IPv4 sockets include header
+                data, src = self._sock.recvfrom(4096)  # TODO: increase if necessary
+                data = bytearray(data)
+                dlen = len(data)
+
+                if dlen < 20:
+                    continue
+                head_len = (data[0] << 2) & 0b00111100  # == (data[0] & 0x0f) * 4
+                if dlen < head_len:
+                    continue
+
+                self._handle_bytes(IPv4Address(src[0]), data[head_len:])
+        except BlockingIOError:
+            pass
+
+
+class IPv6TestMultiplexer(BaseTestMultiplexer[IPv6Address]):
+    def __init__(self, src: IPv6Address, send_limiter: TokenBucket,
+                 loop: asyncio.AbstractEventLoop = None) -> None:
+        super(IPv6TestMultiplexer, self).__init__(socket.AF_INET6, src, send_limiter, loop)
+
+        # Raw sockets with protocol set get an EINVAL here. This is caused
+        # by the check for a non-zero inet_num socket field in
+        # https://github.com/torvalds/linux/blob/v5.0/net/ipv6/ipv6_sockglue.c#L256:L259.
+        # SOCK_RAW sockets use that field for storing the protocol number:
+        # https://github.com/torvalds/linux/blob/v5.0/net/ipv6/af_inet6.c#L196:L197
+        # sock.setsockopt(_IPPROTO_IPV6, socket.IPV6_V6ONLY, 1)
+
+    def _handle_read(self) -> None:
+        try:
+            while True:
+                # Raw IPv6 sockets don't include header
+                data, src = self._sock.recvfrom(4096)  # TODO: increase if necessary
+                self._handle_bytes(IPv6Address(src[0]), bytearray(data))
+        except BlockingIOError:
+            pass
