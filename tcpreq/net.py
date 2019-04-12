@@ -1,5 +1,6 @@
 from abc import abstractmethod
 from typing import Generic, ClassVar, Dict, Tuple, Optional
+import sys
 from ipaddress import IPv4Address, IPv6Address
 import socket
 import asyncio
@@ -13,6 +14,17 @@ from .tcp import Segment
 # See https://www.iana.org/assignments/protocol-numbers/protocol-numbers.xhtml
 _IPPROTO_IPV6: int = getattr(socket, "IPPROTO_IPV6", 41)
 _IPPROTO_ICMPV6: int = getattr(socket, "IPPROTO_ICMPV6", 58)
+
+# Workaround for missing attributes (only available on Linux)
+_IS_LINUX = sys.platform == "linux"
+if _IS_LINUX:
+    # See linux/include/uapi/linux/icmp.h
+    _ICMP_FILTER: int = getattr(socket, "ICMP_FILTER", 1)
+    _ICMP_TIME_EXCEEDED: int = getattr(socket, "ICMP_TIME_EXCEEDED", 11)
+
+    # See linux/include/uapi/linux/icmpv6.h
+    _ICMPV6_FILTER: int = getattr(socket, "ICMPV6_FILTER", 1)
+    _ICMPV6_TIME_EXCEED: int = getattr(socket, "ICMPV6_TIME_EXCEED", 3)
 
 
 class BaseTestMultiplexer(Generic[IPAddressType]):
@@ -129,6 +141,12 @@ class IPv4TestMultiplexer(BaseTestMultiplexer[IPv4Address]):
         super(IPv4TestMultiplexer, self).__init__(socket.AF_INET, socket.IPPROTO_ICMP,
                                                   src, send_limiter, loop)
 
+        if _IS_LINUX:
+            # See linux/net/ipv4/raw.c
+            allow = (1 << _ICMP_TIME_EXCEEDED)
+            self._icmp_sock.setsockopt(socket.IPPROTO_RAW, _ICMP_FILTER,
+                                       ~allow & 0xffff_ffff)
+
     def _handle_read(self) -> None:
         try:
             while True:
@@ -154,12 +172,12 @@ class IPv6TestMultiplexer(BaseTestMultiplexer[IPv6Address]):
         super(IPv6TestMultiplexer, self).__init__(socket.AF_INET6, _IPPROTO_ICMPV6,
                                                   src, send_limiter, loop)
 
-        # Raw sockets with protocol set get an EINVAL here. This is caused
-        # by the check for a non-zero inet_num socket field in
-        # https://github.com/torvalds/linux/blob/v5.0/net/ipv6/ipv6_sockglue.c#L256:L259.
-        # SOCK_RAW sockets use that field for storing the protocol number:
-        # https://github.com/torvalds/linux/blob/v5.0/net/ipv6/af_inet6.c#L196:L197
-        # sock.setsockopt(_IPPROTO_IPV6, socket.IPV6_V6ONLY, 1)
+        if _IS_LINUX:
+            # See linux/net/ipv6/raw.c
+            allow = [0] * 8
+            allow[_ICMPV6_TIME_EXCEED >> 5] |= (1 << (_ICMPV6_TIME_EXCEED & 0x1f))
+            buf = b''.join((~v & 0xffff_ffff).to_bytes(4, sys.byteorder) for v in allow)
+            self._icmp_sock.setsockopt(_IPPROTO_ICMPV6, _ICMPV6_FILTER, buf)
 
     def _handle_read(self) -> None:
         try:
