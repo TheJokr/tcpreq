@@ -9,26 +9,32 @@ from .limiter import TokenBucket, OutOfTokensError
 from .tests import BaseTest
 from .tcp import Segment
 
-# Workaround for missing attributes on Windows (IPv6 has protocol number 41)
+# Workaround for missing attributes on Windows
+# See https://www.iana.org/assignments/protocol-numbers/protocol-numbers.xhtml
 _IPPROTO_IPV6: int = getattr(socket, "IPPROTO_IPV6", 41)
+_IPPROTO_ICMPV6: int = getattr(socket, "IPPROTO_ICMPV6", 58)
 
 
 class BaseTestMultiplexer(Generic[IPAddressType]):
     """Multiplex multiple TCP streams over a single raw IP socket."""
     _RST_THRESHOLD: ClassVar[int] = 3
 
-    def __init__(self, sock_fam: socket.AddressFamily, src: IPAddressType,
+    def __init__(self, sock_fam: socket.AddressFamily, icmp_proto: int, src: IPAddressType,
                  send_limiter: TokenBucket, loop: asyncio.AbstractEventLoop = None) -> None:
-        sock = socket.socket(sock_fam, socket.SOCK_RAW, socket.IPPROTO_TCP)
-        sock.setblocking(False)
-        sock.bind((str(src), 0))
+        tcp_sock = socket.socket(sock_fam, socket.SOCK_RAW, socket.IPPROTO_TCP)
+        icmp_sock = socket.socket(sock_fam, socket.SOCK_RAW, icmp_proto)
+        for sock in (tcp_sock, icmp_sock):
+            sock.setblocking(False)
+            sock.bind((str(src), 0))
 
         if loop is None:
             loop = asyncio.get_event_loop()
-        loop.add_reader(sock.fileno(), self._handle_read)
-        loop.add_writer(sock.fileno(), self._handle_write)
+        loop.add_reader(tcp_sock.fileno(), self._handle_read)
+        loop.add_reader(icmp_sock.fileno(), self._handle_icmp_read)
+        loop.add_writer(tcp_sock.fileno(), self._handle_write)
 
-        self._sock = sock
+        self._sock = tcp_sock
+        self._icmp_sock = icmp_sock
         self._src_addr: IPAddressType = src
         self._recv_queue_map: Dict[Tuple[int, bytes, int], "asyncio.Queue[Segment]"] = {}
         self._send_queue: "asyncio.Queue[Tuple[Segment, IPAddressType]]" = asyncio.Queue(loop=loop)
@@ -89,6 +95,10 @@ class BaseTestMultiplexer(Generic[IPAddressType]):
         self._send_queue.put_nowait((rst_seg, src_addr))
         self._sent_rsts[key] = rsts + 1
 
+    @abstractmethod
+    def _handle_icmp_read(self) -> None:
+        pass
+
     def _handle_write(self) -> None:
         # Send segment dequeued last during previous invocation if present
         if self._send_next is not None:
@@ -116,7 +126,8 @@ class BaseTestMultiplexer(Generic[IPAddressType]):
 class IPv4TestMultiplexer(BaseTestMultiplexer[IPv4Address]):
     def __init__(self, src: IPv4Address, send_limiter: TokenBucket,
                  loop: asyncio.AbstractEventLoop = None) -> None:
-        super(IPv4TestMultiplexer, self).__init__(socket.AF_INET, src, send_limiter, loop)
+        super(IPv4TestMultiplexer, self).__init__(socket.AF_INET, socket.IPPROTO_ICMP,
+                                                  src, send_limiter, loop)
 
     def _handle_read(self) -> None:
         try:
@@ -140,7 +151,8 @@ class IPv4TestMultiplexer(BaseTestMultiplexer[IPv4Address]):
 class IPv6TestMultiplexer(BaseTestMultiplexer[IPv6Address]):
     def __init__(self, src: IPv6Address, send_limiter: TokenBucket,
                  loop: asyncio.AbstractEventLoop = None) -> None:
-        super(IPv6TestMultiplexer, self).__init__(socket.AF_INET6, src, send_limiter, loop)
+        super(IPv6TestMultiplexer, self).__init__(socket.AF_INET6, _IPPROTO_ICMPV6,
+                                                  src, send_limiter, loop)
 
         # Raw sockets with protocol set get an EINVAL here. This is caused
         # by the check for a non-zero inet_num socket field in
