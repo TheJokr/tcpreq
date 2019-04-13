@@ -1,4 +1,5 @@
 from typing import Optional
+import sys
 import random
 import asyncio
 
@@ -18,7 +19,7 @@ class ChecksumTest(BaseTest):
         cur_seq = random.randrange(0, 1 << 32)
         cs_wrong = False
         while not cs_wrong:
-            cs = random.randrange(0, 1 << 16).to_bytes(2, "little")
+            cs = random.randrange(0, 1 << 16).to_bytes(2, sys.byteorder)
             syn_seg = Segment(self.src, self.dst, seq=cur_seq, window=1024, syn=True, checksum=cs)
 
             seg_arr = bytearray(bytes(syn_seg))
@@ -76,7 +77,7 @@ class ChecksumTest(BaseTest):
 
         cs_wrong = False
         while not cs_wrong:
-            cs = random.randrange(0, 1 << 16).to_bytes(2, "little")
+            cs = random.randrange(0, 1 << 16).to_bytes(2, sys.byteorder)
             ack_seg = syn_res.make_reply(self.src[0], self.dst[0], window=512,
                                          ack=True, checksum=cs)
 
