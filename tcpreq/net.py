@@ -2,6 +2,7 @@ from abc import abstractmethod
 from typing import Generic, ClassVar, Dict, List, Tuple, Union, Optional
 import sys
 import itertools
+from collections import Counter
 from ipaddress import IPv4Address, IPv6Address
 import socket
 import asyncio
@@ -11,21 +12,30 @@ from .limiter import TokenBucket, OutOfTokensError
 from .tests import BaseTest
 from .tcp import Segment
 
-# Workaround for missing attributes on Windows
+# Workaround for missing attributes
 # See https://www.iana.org/assignments/protocol-numbers/protocol-numbers.xhtml
 _IPPROTO_IPV6: int = getattr(socket, "IPPROTO_IPV6", 41)
 _IPPROTO_ICMPV6: int = getattr(socket, "IPPROTO_ICMPV6", 58)
 
-# Workaround for missing attributes (only available on Linux)
+# See https://www.iana.org/assignments/ipv6-parameters/ipv6-parameters.xhtml
+_IPV6_EXT_HEAD_TYPES = {0, 43, 44, 50, 51, 60, 135, 139, 140, 253, 254}
+
+# See https://www.iana.org/assignments/icmp-parameters/icmp-parameters.xhtml
+_ICMP_TIME_EXCEEDED: int = getattr(socket, "ICMP_TIME_EXCEEDED", 11)
+_ICMP_EXC_TTL: int = getattr(socket, "ICMP_EXC_TTL", 0)
+
+# See https://www.iana.org/assignments/icmpv6-parameters/icmpv6-parameters.xhtml
+_ICMPV6_TIME_EXCEED: int = getattr(socket, "ICMPV6_TIME_EXCEED", 3)
+_ICMPV6_EXC_HOPLIMIT: int = getattr(socket, "ICMPV6_EXC_HOPLIMIT", 0)
+
+# Workaround for attributes available only on Linux
 _IS_LINUX = sys.platform == "linux"
 if _IS_LINUX:
     # See linux/include/uapi/linux/icmp.h
     _ICMP_FILTER: int = getattr(socket, "ICMP_FILTER", 1)
-    _ICMP_TIME_EXCEEDED: int = getattr(socket, "ICMP_TIME_EXCEEDED", 11)
 
     # See linux/include/uapi/linux/icmpv6.h
     _ICMPV6_FILTER: int = getattr(socket, "ICMPV6_FILTER", 1)
-    _ICMPV6_TIME_EXCEED: int = getattr(socket, "ICMPV6_TIME_EXCEED", 3)
 
 
 class BaseTestMultiplexer(Generic[IPAddressType]):
@@ -112,6 +122,18 @@ class BaseTestMultiplexer(Generic[IPAddressType]):
     def _handle_icmp_read(self) -> None:
         pass
 
+    def _handle_icmp_time_exceeded(self, dst_addr: bytes, quote: bytes, hops: int) -> None:
+        if len(quote) < 4:
+            # Discard invalid quotes silently
+            return
+
+        src_port = int.from_bytes(quote[0:2], "big")
+        dst_port = int.from_bytes(quote[2:4], "big")
+        try:
+            self._test_map[(src_port, dst_addr, dst_port)].quote_queue.append((hops, quote))
+        except KeyError:
+            pass
+
     @abstractmethod
     def _handle_write(self) -> None:
         pass
@@ -162,6 +184,71 @@ class IPv4TestMultiplexer(BaseTestMultiplexer[IPv4Address]):
                 self._handle_bytes(IPv4Address(src[0]), data[head_len:])
         except BlockingIOError:
             pass
+
+    def _handle_icmp_read(self) -> None:
+        try:
+            while True:
+                # Raw IPv4 sockets include header
+                data, src = self._icmp_sock.recvfrom(4096)  # TODO: increase if necessary
+                dlen = len(data)
+
+                if dlen < 28:
+                    continue
+                head_len = (data[0] << 2) & 0b00111100  # == (data[0] & 0x0f) * 4
+                if dlen < head_len + 8:
+                    continue
+
+                if data[head_len] == _ICMP_TIME_EXCEEDED and data[head_len + 1] == _ICMP_EXC_TTL:
+                    # TODO: verify ICMP checksum?
+                    data = data[head_len + 8:]
+                    dlen = len(data)
+
+                    if dlen < 20 or data[9] != socket.IPPROTO_TCP:
+                        continue
+                    head_len = (data[0] << 2) & 0b00111100  # == (data[0] & 0x0f) * 4
+                    if dlen < head_len:
+                        continue
+
+                    self._handle_icmp_time_exceeded(data[16:20], data[head_len:],
+                                                    hops=self._recover_ttl(data, head_len))
+        except BlockingIOError:
+            pass
+
+    @staticmethod
+    def _recover_ttl(data: bytes, head_len: int) -> int:
+        # TTL is initially unknown
+        ttl = 0
+
+        # Parse ID field
+        enc = int.from_bytes(data[4:6], "big")
+        val, cnt = Counter((enc >> i) & 0x1f for i in (11, 5, 0)).most_common(1)[0]
+        if cnt >= 3:
+            # Random chance: 2^6 in 2^16 <=> 1 in 1024
+            return val
+        elif cnt == 2:
+            # Random chance: 3 * (2^11 - 2^6) in 2^16  <=> 1 in ~11
+            ttl = cnt
+
+        # Parse IHL+options
+        div = (data[0] & 0x0f) - 6
+        if div >= 0:
+            # Options must be present
+            mod: Optional[int] = None
+            expected = 0x01
+            for idx, opt in enumerate(data[20:head_len]):
+                if opt != expected:
+                    if mod is None and opt == 0x00:
+                        mod = idx % 4
+                        expected = 0x00
+                    else:
+                        mod = None
+                        break
+
+            if mod is not None:
+                # IHL+options overwrites ID field due to its very specific structure
+                ttl = 4 * div + mod
+
+        return ttl
 
     def _handle_write(self) -> None:
         # Send segment dequeued last during previous invocation if present
@@ -232,6 +319,52 @@ class IPv6TestMultiplexer(BaseTestMultiplexer[IPv6Address]):
                 self._handle_bytes(IPv6Address(src[0]), bytearray(data))
         except BlockingIOError:
             pass
+
+    def _handle_icmp_read(self) -> None:
+        try:
+            while True:
+                # Raw IPv6 sockets don't include header
+                # Kernel verifies checksum for ICMPv6 sockets
+                data, src = self._icmp_sock.recvfrom(4096)  # TODO: increase if necessary
+                dlen = len(data)
+                if dlen < 4:
+                    continue
+
+                if data[0] == _ICMPV6_TIME_EXCEED and data[1] == _ICMPV6_EXC_HOPLIMIT:
+                    if dlen < 44:
+                        continue
+
+                    next_head = data[10]
+                    dst_addr = data[28:44]
+                    data = data[44:]
+
+                    quote = self._walk_header_chain(next_head, data)
+                    if quote is None:
+                        continue
+
+                    # Number of hops is not encoded into IPv6 packets
+                    self._handle_icmp_time_exceeded(dst_addr, quote, hops=0)
+        except BlockingIOError:
+            pass
+
+    @staticmethod
+    def _walk_header_chain(next_head: int, data: bytes) -> Optional[bytes]:
+        # Walk header chain til TCP header is reached
+        while next_head != socket.IPPROTO_TCP:
+            dlen = len(data)
+            if next_head not in _IPV6_EXT_HEAD_TYPES or dlen < 2:
+                return None
+
+            # Fragment Header (44) is the only extension header without a length field
+            # All other extension headers are required to have one (section 4.8)
+            head_len = 8 if next_head == 44 else data[1]
+            if dlen < head_len:
+                return None
+
+            next_head = data[0]
+            data = data[head_len:]
+
+        return data
 
     def _handle_write(self) -> None:
         # Send segment dequeued last during previous invocation if present
