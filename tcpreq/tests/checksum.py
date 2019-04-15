@@ -1,11 +1,12 @@
-from typing import Optional
+from typing import Awaitable, List, Optional
 import sys
+from collections import deque
 import random
 import asyncio
 
 from .base import BaseTest
 from .result import TestResult, TEST_PASS, TEST_UNK, TEST_FAIL
-from ..tcp import Segment, check_window
+from ..tcp import Segment, check_window, noop_option, end_of_options
 from ..tcp.checksum import calc_checksum
 
 
@@ -13,7 +14,69 @@ from ..tcp.checksum import calc_checksum
 # E.g. ethtool -K <DEVNAME> tx off on Linux
 class ChecksumTest(BaseTest):
     """Evaluate response to incorrect checksums in SYNs and after handshake."""
+    async def _detect_interference(self) -> Optional[TestResult]:
+        # Test path for checksum modifiers
+        src_addr = self.src[0].packed
+        dst_addr = self.dst[0].packed
+        seq = random.randrange(0, 1 << 32)
+        cs = random.randrange(0, 1 << 16).to_bytes(2, sys.byteorder)
+        opts = deque((end_of_options,))
+        futs: List[Awaitable[None]] = []
+
+        for ttl in range(1, self._HOP_LIMIT + 1):
+            # Encoding is similar to IPv4 header
+            enc_16 = (ttl << 11) | (ttl << 5) | ttl
+            enc_32 = (enc_16 << 16) | enc_16
+            opts.appendleft(noop_option)
+            syn_seg = Segment(self.src, self.dst, seq=seq, window=enc_16, ack_seq=enc_32,
+                              syn=True, checksum=cs, up=enc_16, options=opts)
+
+            seg_arr = bytearray(bytes(syn_seg))
+            seg_arr[16:18] = b"\x00\x00"
+            if calc_checksum(src_addr, dst_addr, b'', seg_arr) == cs:
+                # Set unused bit in enc_16 to 1 to change real checksum
+                enc_16 |= 0x0400
+                syn_seg = Segment(self.src, self.dst, seq=seq, window=enc_16, ack_seq=enc_32,
+                                  syn=True, checksum=cs, up=enc_16, options=opts)
+
+            futs.append(self.send(syn_seg, ttl=ttl))
+        del src_addr, dst_addr, opts, syn_seg, seg_arr
+        await asyncio.wait(futs, loop=self._loop)
+        del futs
+
+        result = await self._check_syn_resp(seq, 0)
+        if result is not None:
+            result.status = TEST_UNK
+            result.reason += " (middlebox interference?)"
+
+        try:
+            # TODO: sort quote queue beforehand?
+            mbox_hop = next(filter(None, (self._check_quote(*item, seq=seq, checksum=cs)
+                                          for item in self.quote_queue)))
+        except StopIteration:
+            pass
+        else:
+            # On-path quote overwrites previous result
+            reason = "Middlebox interference detected at hop {} (checksum modified)"
+            result = TestResult(TEST_UNK, 0, reason.format(mbox_hop))
+
+        # Clear queues (might contain challenge ACKs due to multiple SYNs reaching the target)
+        await asyncio.sleep(10)
+        self.quote_queue.clear()
+        self.recv_queue = asyncio.Queue(loop=self._loop)
+
+        return result
+
+    def _check_quote(self, ttl_guess: int, quote: bytes,
+                     seq: int, checksum: bytes) -> Optional[int]:
+        # TODO
+        return None
+
     async def run(self) -> TestResult:
+        result = await self._detect_interference()
+        if result is not None:
+            return result
+
         # Send SYN with incorrect checksum
         # Try random checksums until one doesn't match
         cur_seq = random.randrange(0, 1 << 32)
