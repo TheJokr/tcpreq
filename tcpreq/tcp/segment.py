@@ -1,4 +1,4 @@
-from typing import ClassVar, Sequence, Tuple
+from typing import ClassVar, Sequence, Tuple, Optional
 import struct
 import math
 
@@ -72,6 +72,19 @@ class Segment(object):
         dst = (dst_addr, self.src_port)
         return Segment(src, dst, seq, window, ack_seq, cwr, ece, urg, ack,
                        psh, rst, syn, fin, flags, checksum, up, options, payload)
+
+    def make_reset(self, src_addr: IPAddressType, dst_addr: IPAddressType) -> "Segment":
+        # Per RFC 793bis, section 3.4, "Reset Generation", 1. and 2.
+        has_ack = self.flags & 0x10
+        if has_ack:
+            seq = self.ack_seq
+            ack_seq: Optional[int] = 0
+        else:
+            seq = 0
+            ack_seq = None
+
+        return self.make_reply(src_addr, dst_addr, seq=seq, window=0,
+                               ack_seq=ack_seq, ack=not has_ack, rst=True)
 
     @classmethod
     def from_bytes(cls, src_addr: bytes, dst_addr: bytes, data: bytearray) -> "Segment":

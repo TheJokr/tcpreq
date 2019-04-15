@@ -114,8 +114,7 @@ class BaseTestMultiplexer(Generic[IPAddressType]):
         if rsts >= self._RST_THRESHOLD:
             return
 
-        rst_seg = seg.make_reply(self._src_addr, src_addr, window=0, seq=-1, ack=True, rst=True)
-        self._send_queue.put_nowait((rst_seg, src_addr))
+        self._send_queue.put_nowait((seg.make_reset(self._src_addr, src_addr), src_addr))
         self._sent_rsts[key] = rsts + 1
 
     @abstractmethod
