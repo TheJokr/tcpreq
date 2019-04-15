@@ -1,4 +1,4 @@
-from typing import Type, Sequence, List, Tuple
+from typing import Type, Iterable, Sequence, List, Tuple
 import time
 import random
 import itertools
@@ -44,8 +44,8 @@ def _select_addrs() -> Tuple[IPv4Address, IPv6Address]:
     return IPv4Address(res[0]), IPv6Address(res[1])
 
 
-def _process_results(targets: Sequence[Tuple[AnyIPAddress, int]],
-                     futures: Sequence["asyncio.Future[TestResult]"]) -> None:
+def _process_results(targets: Iterable[Tuple[AnyIPAddress, int]],
+                     futures: Iterable["asyncio.Future[TestResult]"]) -> None:
     for tgt, f in zip(targets, futures):
         tgt_str = "{0[0]}\t{0[1]}\t".format(tgt)
         try:
