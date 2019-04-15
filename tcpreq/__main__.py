@@ -27,6 +27,8 @@ def _select_addrs() -> Tuple[IPv4Address, IPv6Address]:
         if not addrs:
             raise RuntimeError("No IPv{} address available".format(v))
         elif len(addrs) == 1:
+            print("Using single available IPv{} address".format(v), addrs[0])
+            print()
             res.append(addrs[0])
             continue
 
