@@ -9,7 +9,7 @@ from ..tcp import Segment, check_window
 from ..tcp.checksum import calc_checksum
 
 
-# Make sure TX TCP checksum offloading is disabled
+# Make sure TCP TX checksum offloading is disabled
 # E.g. ethtool -K <DEVNAME> tx off on Linux
 class ChecksumTest(BaseTest):
     """Evaluate response to incorrect checksums in SYNs and after handshake."""
@@ -26,6 +26,7 @@ class ChecksumTest(BaseTest):
             seg_arr[16:18] = b"\x00\x00"
             cs_wrong = (calc_checksum(self.src[0].packed, self.dst[0].packed, b'', seg_arr) != cs)
         await self.send(syn_seg)
+        del syn_seg, seg_arr
 
         result = await self._check_syn_resp(cur_seq, test_stage=1)
         if result is not None:
@@ -43,6 +44,7 @@ class ChecksumTest(BaseTest):
             seg_raw = bytes(syn_seg)
             cs_wrong = (calc_checksum(self.src[0].packed, self.dst[0].packed, b'', seg_raw) != cs)
         await self.send(syn_seg)
+        del syn_seg, seg_raw
 
         result = await self._check_syn_resp(cur_seq, test_stage=2)
         if result is not None:
@@ -53,6 +55,7 @@ class ChecksumTest(BaseTest):
         cur_seq = (cur_seq + 2 * win) % 0x1_0000_000
         syn_seg = Segment(self.src, self.dst, seq=cur_seq, window=512, syn=True)
         await self.send(syn_seg)
+        del syn_seg
 
         # Simultaneous open is not supported (targets are listening hosts)
         result = None
@@ -80,10 +83,11 @@ class ChecksumTest(BaseTest):
             ack_seg = syn_res.make_reply(self.src[0], self.dst[0], window=512,
                                          ack=True, checksum=cs)
 
-            seg_arr = bytearray(bytes(syn_seg))
+            seg_arr = bytearray(bytes(ack_seg))
             seg_arr[16:18] = b"\x00\x00"
             cs_wrong = (calc_checksum(self.src[0].packed, self.dst[0].packed, b'', seg_arr) != cs)
         await self.send(ack_seg)
+        del seg_arr
 
         result = None
         try:
