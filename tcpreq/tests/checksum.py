@@ -71,8 +71,7 @@ class ChecksumTest(BaseTest):
 
         if result is not None:
             # Reset connection to be sure
-            await self.send(syn_res.make_reply(self.src[0], self.dst[0], window=0,
-                                               seq=-1, ack=True, rst=True))
+            await self.send(syn_res.make_reset(self.src[0], self.dst[0]))
             return result
 
         cs_wrong = False
@@ -108,8 +107,7 @@ class ChecksumTest(BaseTest):
                 return TestResult(TEST_PASS)
 
         # Reset connection to be sure
-        await self.send(ack_res.make_reply(self.src[0], self.dst[0], window=0,
-                                           seq=-1, ack=True, rst=True))
+        await self.send(ack_res.make_reset(self.src[0], self.dst[0]))
         return result
 
     async def _check_syn_resp(self, sent_seq: int, test_stage: int) -> Optional[TestResult]:
@@ -123,8 +121,7 @@ class ChecksumTest(BaseTest):
             exp_ack = (sent_seq + 1) % 0x1_0000_0000
             if not (res.flags & 0x04):
                 # Reset connection to be sure
-                await self.send(res.make_reply(self.src[0], self.dst[0], window=0,
-                                               seq=-1, ack=True, rst=True))
+                await self.send(res.make_reset(self.src[0], self.dst[0]))
                 return TestResult(TEST_FAIL, test_stage,
                                   "Non-RST in reply to SYN with incorrect checksum")
             elif res.ack_seq != exp_ack:
