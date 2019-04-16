@@ -355,7 +355,7 @@ class IPv6TestMultiplexer(BaseTestMultiplexer[IPv6Address]):
                 return None
 
             # Fragment Header (44) is the only extension header without a length field
-            # All other extension headers are required to have one (section 4.8)
+            # All other extension headers are required to have one (RFC 8200, section 4.8)
             head_len = 8 if next_head == 44 else data[1]
             if dlen < head_len:
                 return None

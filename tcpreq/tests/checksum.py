@@ -54,7 +54,7 @@ class ChecksumTest(BaseTest):
             if mbox_hop > 0:
                 if not verified and res_stat >= 3:
                     continue
-            elif (res_stat >= 2 if verified else res_stat >= 1):
+            elif res_stat >= 1 + verified:
                 continue
 
             reason = "Middlebox interference detected"
@@ -91,8 +91,6 @@ class ChecksumTest(BaseTest):
             return None
 
         # Checksum is modified, but could be wrong still (incremental update)
-        # Return value of 0 means any modification at unknown hop,
-        # return values larger than 0 signal a corrected checksum.
         ttl = 0
         ttl_count: CounterType[int] = Counter()
         ttl_guess = min(ttl_guess, self._HOP_LIMIT)
@@ -165,6 +163,7 @@ class ChecksumTest(BaseTest):
                     if ttl_count[v] >= 2:
                         ttl = v
                         break
+                # else: evidence inconclusive
             else:  # clen == 0
                 # Fall back to lower layer guess
                 ttl = ttl_guess
