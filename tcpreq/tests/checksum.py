@@ -1,6 +1,6 @@
-from typing import Awaitable, List, Optional
+from typing import Awaitable, List, Tuple, Counter as CounterType, Optional
 import sys
-from collections import deque
+from collections import deque, Counter
 import random
 import asyncio
 
@@ -46,19 +46,31 @@ class ChecksumTest(BaseTest):
 
         result = await self._check_syn_resp(seq, 0)
         if result is not None:
-            result.status = TEST_UNK
-            result.reason += " (middlebox interference?)"
+            result = TestResult(TEST_UNK, 0, result.reason + " (middlebox interference?)")  # type: ignore # noqa
 
-        try:
-            # TODO: sort quote queue beforehand?
-            mbox_hop = next(filter(None, (self._check_quote(*item, seq=seq, checksum=cs)
-                                          for item in self.quote_queue)))
-        except StopIteration:
-            pass
-        else:
-            # On-path quote overwrites previous result
-            reason = "Middlebox interference detected at hop {} (checksum modified)"
+        res_stat = 0
+        hops = filter(None, (self._check_quote(*item, checksum=cs) for item in self.quote_queue))
+        for mbox_hop, verified in hops:
+            if mbox_hop > 0:
+                if not verified and res_stat >= 3:
+                    continue
+            elif (res_stat >= 2 if verified else res_stat >= 1):
+                continue
+
+            reason = "Middlebox interference detected"
+            reason += " at or before hop {0}" if mbox_hop > 0 else " at unknown hop"
+            reason += " (checksum corrected)" if verified else " (checksum modified)"
             result = TestResult(TEST_UNK, 0, reason.format(mbox_hop))
+
+            if mbox_hop > 0:
+                if verified:
+                    break
+                else:
+                    res_stat = 3
+            elif verified:
+                res_stat = 2
+            else:
+                res_stat = 1
 
         # Clear queues (might contain challenge ACKs due to multiple SYNs reaching the target)
         await asyncio.sleep(10)
@@ -68,9 +80,96 @@ class ChecksumTest(BaseTest):
         return result
 
     def _check_quote(self, ttl_guess: int, quote: bytes,
-                     seq: int, checksum: bytes) -> Optional[int]:
-        # TODO
-        return None
+                     checksum: bytes) -> Optional[Tuple[int, bool]]:
+        qlen = len(quote)
+        if qlen < 18:
+            # Checksum not included in quote
+            return None
+
+        cs = quote[16:18]
+        if cs == checksum:
+            return None
+
+        # Checksum is modified, but could be wrong still (incremental update)
+        # Return value of 0 means any modification at unknown hop,
+        # return values larger than 0 signal a corrected checksum.
+        ttl = 0
+        ttl_count: CounterType[int] = Counter()
+        ttl_guess = min(ttl_guess, self._HOP_LIMIT)
+
+        ack = int.from_bytes(quote[8:12], "big")
+        ttl_count.update((ack >> i) & 0x1f for i in (27, 21, 16, 11, 5, 0))
+
+        win = int.from_bytes(quote[14:16], "big")
+        ttl_count.update((win >> i) & 0x1f for i in (11, 5, 0))
+
+        cs_vrfy = False
+        if qlen >= 20:
+            up = int.from_bytes(quote[18:20], "big")
+            ttl_count.update((up >> i) & 0x1f for i in (11, 5, 0))
+
+            div = (quote[12] >> 4)
+            head_len = div * 4
+            if qlen >= head_len:
+                # Verify checksum if full header is included
+                # TODO: NAT may modify src_addr
+                seg = bytearray(quote)
+                seg[16:18] = b"\x00\x00"
+                cs_vrfy = (calc_checksum(self.src[0].packed, self.dst[0].packed, b'', seg) == cs)
+                if not cs_vrfy:
+                    # Checksum is still incorrect
+                    return None
+
+                # Try to recover TTL from DO+options (see IPv4TestMultiplexer._recover_ttl)
+                if div > 5:
+                    div -= 6
+                    mod: Optional[int] = None
+                    expected = 0x01
+                    for idx, opt in enumerate(quote[20:head_len]):
+                        if opt != expected:
+                            if mod is None and opt == 0x00:
+                                mod = idx % 4
+                                expected = 0x00
+                            else:
+                                mod = None
+                                break
+
+                    if mod is not None:
+                        ttl = 4 * div + mod
+
+        if ttl == 0:
+            # Get most likely TTL value from ttl_count. There are up to 12 entries.
+            # At least 4 votes (33%) are required to be selected. This means
+            # only the top 3 values can be eligible.
+            candidates = list(filter(lambda c: c[0] <= self._HOP_LIMIT and c[1] >= 4,
+                                     ttl_count.most_common(3)))
+            clen = len(candidates)
+
+            if clen == 1:
+                # Trivial case
+                ttl = candidates[0][0]
+            elif clen == 2:
+                diff = candidates[0][1] - candidates[1][1]
+                if diff >= 2 or candidates[0][0] == ttl_guess:
+                    ttl = candidates[0][0]
+                elif candidates[1][0] == ttl_guess:
+                    ttl = candidates[1][0]
+                elif diff > 0:
+                    ttl = candidates[0][0]
+                # else: evidence inconclusive
+            elif clen == 3:
+                # Must be a tie (4 * 3 == 12). Use window as tie breaker.
+                ttl_count.clear()
+                ttl_count.update((win >> i) & 0x1f for i in (11, 5, 0))
+                for v, _ in candidates:
+                    if ttl_count[v] >= 2:
+                        ttl = v
+                        break
+            else:  # clen == 0
+                # Fall back to lower layer guess
+                ttl = ttl_guess
+
+        return ttl, cs_vrfy
 
     async def run(self) -> TestResult:
         result = await self._detect_interference()
