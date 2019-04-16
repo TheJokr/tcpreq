@@ -270,11 +270,11 @@ class IPv4TestMultiplexer(BaseTestMultiplexer[IPv4Address]):
 
                 if len(item) == 3:
                     # Set TTL
-                    data[8] = item[2]
+                    data[8] = item[2]  # type: ignore
 
                     # Encode TTL into IHL field + options.
                     # The position of the EOOL option specifies the remainder (0-3).
-                    pad_rows, eool_idx = divmod(item[2], 4)
+                    pad_rows, eool_idx = divmod(item[2], 4)  # type: ignore
                     pad_rows += 1  # pad_rows must be at least 1 to embed EOOL
                     data[0] = 0x40 | (pad_rows + 5)
 
@@ -283,7 +283,7 @@ class IPv4TestMultiplexer(BaseTestMultiplexer[IPv4Address]):
                     data[20:20] = opts
 
                     # Encode TTL into ID field (bits 15-11, 9-5, and 4-0)
-                    enc = item[2]
+                    enc = item[2]  # type: ignore
                     enc |= (enc << 11) | (enc << 5)
                     data[4:6] = enc.to_bytes(2, "big")
 
@@ -387,10 +387,10 @@ class IPv6TestMultiplexer(BaseTestMultiplexer[IPv6Address]):
                 data = bytes(item[0])
                 ancil: List[Tuple[int, int, bytes]] = []
 
-                if item[2] is not None:
+                if len(item) == 3:
                     # Set hop limit
                     ancil.append((_IPPROTO_IPV6, socket.IPV6_HOPLIMIT,
-                                  item[2].to_bytes(4, sys.byteorder)))
+                                  item[2].to_bytes(4, sys.byteorder)))  # type: ignore
 
                     # Can't encode TTL into flow label because Linux
                     # requires a lot of internal setup to overwrite it,
