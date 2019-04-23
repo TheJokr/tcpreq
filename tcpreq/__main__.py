@@ -1,4 +1,4 @@
-from typing import Type, Iterable, Sequence, List, Set, Tuple
+from typing import Type, Iterable, Sequence, List, Set, Tuple, Optional, Generator
 import time
 import random
 import itertools
@@ -16,32 +16,29 @@ from .tests import BaseTest, DEFAULT_TESTS, TestResult
 _BASE_PORT = random.randint(49152, 61000)
 
 
-def _select_addrs() -> Tuple[IPv4Address, IPv6Address]:
+def _select_addrs() -> Generator[AnyIPAddress, None, None]:
     host = socket.gethostname()
-    res: List[str] = []
 
-    for v, fam in ((4, socket.AF_INET), (6, socket.AF_INET6)):
+    for v, fam, cls in ((4, socket.AF_INET, IPv4Address), (6, socket.AF_INET6, IPv6Address)):
         # Remove scope ID from address if present
         addrs = [ai[4][0].rsplit("%", 1)[0] for ai
                  in socket.getaddrinfo(host, None, fam, socket.SOCK_RAW, socket.IPPROTO_TCP)]
         if not addrs:
-            raise RuntimeError("No IPv{} address available".format(v))
-        elif len(addrs) == 1:
-            print("Using single available IPv{} address".format(v), addrs[0])
-            print()
-            res.append(addrs[0])
             continue
 
         print("Available IPv{} addresses:".format(v))
         print("\n".join("{}) ".format(idx + 1) + a for idx, a in enumerate(addrs)))
 
-        sel = -1
-        while not 0 <= sel < len(addrs):
-            sel = int(input("Please select an IPv{} address [1-{}]: ".format(v, len(addrs)))) - 1
-        print()
-        res.append(addrs[sel])
-
-    return IPv4Address(res[0]), IPv6Address(res[1])
+        sel = 0
+        while not 1 <= sel <= len(addrs):
+            try:
+                sel = int(input("Please select an IPv{} address [1-{}]: ".format(v, len(addrs))))
+            except (EOFError, ValueError):
+                print()
+                break
+        else:
+            print()
+            yield cls(addrs[sel - 1])  # type: ignore
 
 
 def _process_results(targets: Iterable[Tuple[AnyIPAddress, int]],
@@ -70,30 +67,39 @@ def _process_results(targets: Iterable[Tuple[AnyIPAddress, int]],
 def main() -> None:
     args = parser.parse_args()
 
+    # Set source IP addresses
+    addrs: Sequence[AnyIPAddress] = args.bind or list(_select_addrs())
+    ipv4_src: Optional[IPv4Address] = next((a for a in addrs if isinstance(a, IPv4Address)), None)
+    ipv6_src: Optional[IPv6Address] = next((a for a in addrs if isinstance(a, IPv6Address)), None)
+
     # Aggregate targets from multiple sources
     tgt_set: Set[Tuple[AnyIPAddress, int]] = set(args.target)
     tgt_set.update(itertools.chain.from_iterable(args.nmap))
     tgt_set.update(itertools.chain.from_iterable(args.zmap))
-    if not tgt_set:
+
+    # Filter targets
+    tgt_fil: Iterable[Tuple[AnyIPAddress, int]] = tgt_set
+    if ipv4_src is None:
+        tgt_fil = filter(lambda t: not isinstance(t[0], IPv4Address), tgt_fil)
+    if ipv6_src is None:
+        tgt_fil = filter(lambda t: not isinstance(t[0], IPv6Address), tgt_fil)
+
+    targets = list(tgt_fil)
+    del tgt_fil, tgt_set
+    if not targets:
         parser.print_usage()
-        print(parser.prog + ": error: at least one target is required")
+        print(parser.prog + ": error: at least one valid target is required")
         return
-
-    targets = list(tgt_set)
-    del tgt_set
-
-    # Set source IP addresses
-    addrs: Sequence[AnyIPAddress] = args.bind or _select_addrs()
-    ipv4_src: IPv4Address = next(a for a in addrs if isinstance(a, IPv4Address))
-    ipv6_src: IPv6Address = next(a for a in addrs if isinstance(a, IPv6Address))
 
     # Setup sockets/multiplexers
     # Both multiplexers share a token bucket with a precision of 1/8th of a second
     # and which allows bursts of up to half a second's worth of packets
     limiter = TokenBucket(args.rate // 8 or 1, 0.125, args.rate // 2 or 1)
     loop = asyncio.SelectorEventLoop()
-    ipv4_plex = IPv4TestMultiplexer(ipv4_src, limiter, loop=loop)
-    ipv6_plex = IPv6TestMultiplexer(ipv6_src, limiter, loop=loop)
+    ipv4_plex: Optional[IPv4TestMultiplexer] = (None if ipv4_src is None
+                                                else IPv4TestMultiplexer(ipv4_src, limiter, loop=loop))
+    ipv6_plex: Optional[IPv6TestMultiplexer] = (None if ipv6_src is None
+                                                else IPv6TestMultiplexer(ipv6_src, limiter, loop=loop))
 
     # Run tests sequentially
     active_tests: Sequence[Type[BaseTest]] = args.test or DEFAULT_TESTS
@@ -107,12 +113,12 @@ def main() -> None:
             # that the variable is not overwritten by further iterations of the loop
             if isinstance(tgt[0], IPv6Address):
                 t = test((ipv6_src, src_port), tgt, loop=loop)
-                ipv6_plex.register_test(t)
+                ipv6_plex.register_test(t)  # type: ignore
                 fut = loop.create_task(t.run())
                 fut.add_done_callback(lambda f, t=t: ipv6_plex.unregister_test(t))  # type: ignore
             else:
                 t = test((ipv4_src, src_port), tgt, loop=loop)
-                ipv4_plex.register_test(t)
+                ipv4_plex.register_test(t)  # type: ignore
                 fut = loop.create_task(t.run())
                 fut.add_done_callback(lambda f, t=t: ipv4_plex.unregister_test(t))  # type: ignore
             all_futs.append(fut)
