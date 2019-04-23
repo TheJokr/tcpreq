@@ -1,4 +1,4 @@
-from typing import Type, Iterable, Sequence, List, Tuple
+from typing import Type, Iterable, Sequence, List, Set, Tuple
 import time
 import random
 import itertools
@@ -71,13 +71,16 @@ def main() -> None:
     args = parser.parse_args()
 
     # Aggregate targets from multiple sources
-    targets: List[Tuple[AnyIPAddress, int]] = list(args.target)
-    targets.extend(itertools.chain.from_iterable(args.nmap))
-    targets.extend(itertools.chain.from_iterable(args.zmap))
-    if not targets:
+    tgt_set: Set[Tuple[AnyIPAddress, int]] = set(args.target)
+    tgt_set.update(itertools.chain.from_iterable(args.nmap))
+    tgt_set.update(itertools.chain.from_iterable(args.zmap))
+    if not tgt_set:
         parser.print_usage()
         print(parser.prog + ": error: at least one target is required")
         return
+
+    targets = list(tgt_set)
+    del tgt_set
 
     # Set source IP addresses
     addrs: Sequence[AnyIPAddress] = args.bind or _select_addrs()
