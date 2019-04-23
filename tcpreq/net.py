@@ -301,7 +301,7 @@ class IPv6TestMultiplexer(BaseTestMultiplexer[IPv6Address]):
         super(IPv6TestMultiplexer, self).__init__(socket.AF_INET6, _IPPROTO_ICMPV6,
                                                   src, send_limiter, loop)
 
-        self._send_next: Optional[Tuple[bytes, Tuple[str, int], List[Tuple[int, int, bytes]]]] = None  # noqa
+        self._send_next: Optional[Tuple[bytes, Tuple[str, int], List[Tuple[int, int, bytes]]]] = None
 
         if _IS_LINUX:
             # See linux/net/ipv6/raw.c

@@ -46,7 +46,7 @@ class ChecksumTest(BaseTest):
 
         result = await self._check_syn_resp(seq, 0)
         if result is not None:
-            result = TestResult(TEST_UNK, 0, result.reason + " (middlebox interference?)")  # type: ignore # noqa
+            result = TestResult(TEST_UNK, 0, result.reason + " (middlebox interference?)")  # type: ignore
 
         res_stat = 0
         hops = filter(None, (self._check_quote(*item, checksum=cs) for item in self.quote_queue))
