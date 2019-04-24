@@ -79,7 +79,7 @@ class ChecksumTest(BaseTest):
 
         return result
 
-    def _check_quote(self, ttl_guess: int, quote: bytes,
+    def _check_quote(self, src_addr: bytes, ttl_guess: int, quote: bytes,
                      checksum: bytes) -> Optional[Tuple[int, bool]]:
         qlen = len(quote)
         if qlen < 18:
@@ -110,10 +110,9 @@ class ChecksumTest(BaseTest):
             head_len = div * 4
             if qlen >= head_len:
                 # Verify checksum if full header is included
-                # TODO: NAT may modify src_addr
                 seg = bytearray(quote)
                 seg[16:18] = b"\x00\x00"
-                cs_vrfy = (calc_checksum(self.src[0].packed, self.dst[0].packed, b'', seg) == cs)
+                cs_vrfy = (calc_checksum(src_addr, self.dst[0].packed, b'', seg) == cs)
                 if not cs_vrfy:
                     # Checksum is still incorrect
                     return None

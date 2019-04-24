@@ -121,7 +121,8 @@ class BaseTestMultiplexer(Generic[IPAddressType]):
     def _handle_icmp_read(self) -> None:
         pass
 
-    def _handle_icmp_time_exceeded(self, dst_addr: bytes, quote: bytes, hops: int) -> None:
+    def _handle_icmp_time_exceeded(self, src_addr: bytes, dst_addr: bytes,
+                                   quote: bytes, hops: int) -> None:
         if len(quote) < 4:
             # Discard invalid quotes silently
             return
@@ -129,7 +130,7 @@ class BaseTestMultiplexer(Generic[IPAddressType]):
         src_port = int.from_bytes(quote[0:2], "big")
         dst_port = int.from_bytes(quote[2:4], "big")
         try:
-            self._test_map[(src_port, dst_addr, dst_port)].quote_queue.append((hops, quote))
+            self._test_map[(src_port, dst_addr, dst_port)].quote_queue.append((src_addr, hops, quote))
         except KeyError:
             pass
 
@@ -208,7 +209,7 @@ class IPv4TestMultiplexer(BaseTestMultiplexer[IPv4Address]):
                     if dlen < head_len:
                         continue
 
-                    self._handle_icmp_time_exceeded(data[16:20], data[head_len:],
+                    self._handle_icmp_time_exceeded(data[12:16], data[16:20], data[head_len:],
                                                     hops=self._recover_ttl(data, head_len))
         except BlockingIOError:
             pass
@@ -334,6 +335,7 @@ class IPv6TestMultiplexer(BaseTestMultiplexer[IPv6Address]):
                         continue
 
                     next_head = data[10]
+                    src_addr = data[12:28]
                     dst_addr = data[28:44]
                     data = data[44:]
 
@@ -342,7 +344,7 @@ class IPv6TestMultiplexer(BaseTestMultiplexer[IPv6Address]):
                         continue
 
                     # Number of hops is not encoded into IPv6 packets
-                    self._handle_icmp_time_exceeded(dst_addr, quote, hops=0)
+                    self._handle_icmp_time_exceeded(src_addr, dst_addr, quote, hops=0)
         except BlockingIOError:
             pass
 
