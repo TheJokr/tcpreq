@@ -164,7 +164,7 @@ class IPv4TestMultiplexer(BaseTestMultiplexer[IPv4Address]):
             # See linux/net/ipv4/raw.c
             allow = (1 << _ICMP_TIME_EXCEEDED)
             self._icmp_sock.setsockopt(socket.IPPROTO_RAW, _ICMP_FILTER,
-                                       ~allow & 0xffff_ffff)
+                                       (~allow & 0xffff_ffff).to_bytes(4, sys.byteorder))
 
     def _handle_read(self) -> None:
         try:
@@ -372,7 +372,7 @@ class IPv6TestMultiplexer(BaseTestMultiplexer[IPv6Address]):
                 msg = self._send_next
                 self._send_limiter.take()
                 if msg[2]:
-                    self._sock.sendmsg((msg[0],), msg[2], address=msg[1])  # type: ignore
+                    self._sock.sendmsg((msg[0],), msg[2], 0, msg[1])
                 else:
                     self._sock.sendto(msg[0], msg[1])
             except (OutOfTokensError, BlockingIOError):
@@ -397,7 +397,7 @@ class IPv6TestMultiplexer(BaseTestMultiplexer[IPv6Address]):
                     # which is not available from Python
 
                 if ancil:
-                    self._sock.sendmsg((data,), ancil, address=dst)  # type: ignore
+                    self._sock.sendmsg((data,), ancil, 0, dst)
                 else:
                     self._sock.sendto(data, dst)
         except asyncio.QueueEmpty:
