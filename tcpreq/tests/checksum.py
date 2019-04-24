@@ -257,7 +257,7 @@ class ChecksumTest(BaseTest):
         except asyncio.TimeoutError:
             # Dropping the segment silently is acceptable
             result = TestResult(TEST_PASS)
-            ack_res = syn_res  # For ack_res.make_reply below
+            ack_res = syn_res  # For ack_res.make_reset below
         else:
             # Retransmission of SYN-ACK is acceptable (similar to timeout)
             if ack_res == syn_res:
