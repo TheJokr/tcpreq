@@ -121,7 +121,7 @@ class ChecksumTest(BaseTest):
                 # Try to recover TTL from DO+options (see IPv4TestMultiplexer._recover_ttl)
                 if div > 5:
                     div -= 6
-                    mod: Optional[int] = None
+                    mod = None
                     expected = 0x01
                     for idx, opt in enumerate(quote[20:head_len]):
                         if opt != expected:

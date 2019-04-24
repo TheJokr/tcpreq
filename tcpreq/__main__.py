@@ -69,8 +69,8 @@ def main() -> None:
 
     # Set source IP addresses
     addrs: Sequence[AnyIPAddress] = args.bind or list(_select_addrs())
-    ipv4_src: Optional[IPv4Address] = next((a for a in addrs if isinstance(a, IPv4Address)), None)
-    ipv6_src: Optional[IPv6Address] = next((a for a in addrs if isinstance(a, IPv6Address)), None)
+    ipv4_src = next((a for a in addrs if isinstance(a, IPv4Address)), None)
+    ipv6_src = next((a for a in addrs if isinstance(a, IPv6Address)), None)
 
     # Aggregate targets from multiple sources
     tgt_set: Set[Tuple[AnyIPAddress, int]] = set(args.target)
@@ -96,10 +96,8 @@ def main() -> None:
     # and which allows bursts of up to half a second's worth of packets
     limiter = TokenBucket(args.rate // 8 or 1, 0.125, args.rate // 2 or 1)
     loop = asyncio.SelectorEventLoop()
-    ipv4_plex: Optional[IPv4TestMultiplexer] = (None if ipv4_src is None
-                                                else IPv4TestMultiplexer(ipv4_src, limiter, loop=loop))
-    ipv6_plex: Optional[IPv6TestMultiplexer] = (None if ipv6_src is None
-                                                else IPv6TestMultiplexer(ipv6_src, limiter, loop=loop))
+    ipv4_plex = None if ipv4_src is None else IPv4TestMultiplexer(ipv4_src, limiter, loop=loop)
+    ipv6_plex = None if ipv6_src is None else IPv6TestMultiplexer(ipv6_src, limiter, loop=loop)
 
     # Run tests sequentially
     active_tests: Sequence[Type[BaseTest]] = args.test or DEFAULT_TESTS

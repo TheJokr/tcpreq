@@ -232,7 +232,7 @@ class IPv4TestMultiplexer(BaseTestMultiplexer[IPv4Address]):
         div = (data[0] & 0x0f) - 6
         if div >= 0:
             # Options must be present
-            mod: Optional[int] = None
+            mod = None
             expected = 0x01
             for idx, opt in enumerate(data[20:head_len]):
                 if opt != expected:
