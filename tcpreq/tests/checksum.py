@@ -227,7 +227,7 @@ class ChecksumTest(BaseTest):
             return TestResult(TEST_UNK, 3, "Timeout during handshake")
         if syn_res.flags & 0x04 and syn_res.ack_seq == cur_seq:
             return TestResult(TEST_UNK, 3, "RST in reply to SYN during handshake")
-        elif not (syn_res.flags & 0x12):
+        elif (syn_res.flags & 0x12) != 0x12:
             result = TestResult(TEST_FAIL, 3, "Non-SYN-ACK in reply to SYN during handshake")
         elif syn_res.ack_seq != cur_seq:
             result = TestResult(TEST_FAIL, 3, "Wrong SEQ acked in reply to SYN during handshake")
@@ -259,7 +259,8 @@ class ChecksumTest(BaseTest):
             ack_res = syn_res  # For ack_res.make_reset below
         else:
             # Retransmission of SYN-ACK is acceptable (similar to timeout)
-            if ack_res == syn_res:
+            if (ack_res.flags == syn_res.flags and ack_res.seq == syn_res.seq and
+                    ack_res.ack_seq == syn_res.ack_seq):
                 result = TestResult(TEST_PASS)
             elif not (ack_res.flags & 0x04):
                 result = TestResult(TEST_FAIL, 3, "Non-RST in reply to ACK with incorrect checksum")
