@@ -71,22 +71,24 @@ def main() -> None:
     addrs: Sequence[AnyIPAddress] = args.bind or list(_select_addrs())
     ipv4_src = next((a for a in addrs if isinstance(a, IPv4Address)), None)
     ipv6_src = next((a for a in addrs if isinstance(a, IPv6Address)), None)
+    del addrs
 
     # Aggregate targets from multiple sources
     tgt_set: Set[Tuple[AnyIPAddress, int]] = set(args.target)
     tgt_set.update(itertools.chain.from_iterable(args.nmap))
     tgt_set.update(itertools.chain.from_iterable(args.zmap))
 
-    # Filter targets
-    tgt_fil: Iterable[Tuple[AnyIPAddress, int]] = tgt_set
-    if ipv4_src is None:
-        tgt_fil = filter(lambda t: not isinstance(t[0], IPv4Address), tgt_fil)
-    if ipv6_src is None:
-        tgt_fil = filter(lambda t: not isinstance(t[0], IPv6Address), tgt_fil)
+    # Filter targets by IP version
+    ipv4_tgts: List[Tuple[IPv4Address, int]] = []
+    ipv6_tgts: List[Tuple[IPv6Address, int]] = []
+    for tgt in tgt_set:
+        if isinstance(tgt[0], IPv4Address) and ipv4_src is not None:
+            ipv4_tgts.append(tgt)  # type: ignore
+        elif ipv6_src is not None and isinstance(tgt[0], IPv6Address):
+            ipv6_tgts.append(tgt)  # type: ignore
 
-    targets = list(tgt_fil)
-    del tgt_fil, tgt_set
-    if not targets:
+    del tgt_set
+    if not ipv4_tgts and not ipv6_tgts:
         parser.print_usage()
         print(parser.prog + ": error: at least one valid target is required")
         return
@@ -104,21 +106,23 @@ def main() -> None:
     for idx, test in enumerate(active_tests):
         all_futs: List["asyncio.Future[TestResult]"] = []
         src_port = _BASE_PORT + idx
-        random.shuffle(targets)
+        random.shuffle(ipv4_tgts)
+        random.shuffle(ipv6_tgts)
 
-        for tgt in targets:
-            # Passing the test as a default parameter to the lambda ensures
-            # that the variable is not overwritten by further iterations of the loop
-            if isinstance(tgt[0], IPv6Address):
-                t = test((ipv6_src, src_port), tgt, loop=loop)
-                ipv6_plex.register_test(t)  # type: ignore
-                fut = loop.create_task(t.run())
-                fut.add_done_callback(lambda f, t=t: ipv6_plex.unregister_test(t))  # type: ignore
-            else:
-                t = test((ipv4_src, src_port), tgt, loop=loop)
-                ipv4_plex.register_test(t)  # type: ignore
-                fut = loop.create_task(t.run())
-                fut.add_done_callback(lambda f, t=t: ipv4_plex.unregister_test(t))  # type: ignore
+        # Passing the test as a default parameter to the lambda ensures
+        # that the variable is not overwritten by further iterations of the loop
+        for tgt in ipv4_tgts:
+            t = test((ipv4_src, src_port), tgt, loop=loop)
+            ipv4_plex.register_test(t)  # type: ignore
+            fut = loop.create_task(t.run())
+            fut.add_done_callback(lambda f, t=t: ipv4_plex.unregister_test(t))  # type: ignore
+            all_futs.append(fut)
+
+        for tgt in ipv6_tgts:
+            t = test((ipv6_src, src_port), tgt, loop=loop)
+            ipv6_plex.register_test(t)  # type: ignore
+            fut = loop.create_task(t.run())
+            fut.add_done_callback(lambda f, t=t: ipv6_plex.unregister_test(t))  # type: ignore
             all_futs.append(fut)
 
         # Wait for all futures at once instead of using asyncio.as_completed
@@ -126,7 +130,7 @@ def main() -> None:
         print("Running", test.__name__)
         loop.run_until_complete(asyncio.wait(all_futs, loop=loop))
         print(test.__name__, "results:")
-        _process_results(targets, all_futs)
+        _process_results(itertools.chain(ipv4_tgts, ipv6_tgts), all_futs)
         print()
         time.sleep(5)
 
