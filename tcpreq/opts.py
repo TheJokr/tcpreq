@@ -5,7 +5,7 @@ import ipaddress
 import xml.etree.ElementTree as ET
 import csv
 
-from .types import AnyIPAddress
+from .types import AnyIPAddress, AnyIPNetwork
 from . import tests
 
 _INT_MULTS = {'k': 1_000, 'm': 1_000_000, 'g': 1_000_000_000}
@@ -63,6 +63,19 @@ def _parse_zmap_csv(fpath: str) -> Generator[Tuple[AnyIPAddress, int], None, Non
         yield ipaddress.ip_address(addr), int(port)
 
 
+def _parse_blacklist(fpath: str) -> Generator[AnyIPNetwork, None, None]:
+    for line in open(fpath):
+        line = line.strip()
+        if line.startswith("#"):
+            # Used for comments (ZMap syntax)
+            continue
+
+        try:
+            yield ipaddress.ip_network(line)
+        except ValueError:
+            pass
+
+
 def _parse_test(value: str) -> Type[tests.BaseTest]:
     try:
         cls = getattr(tests, value)
@@ -90,6 +103,9 @@ parser.add_argument("-r", "--rate", default=10_000, type=_parse_suffixed_int, me
 parser.add_argument("-T", "--test", action="append", type=_parse_test, metavar="TestClass",
                     help="A test to perform (subclass of tcpreq.tests.BaseTest). "
                          "May be specified multiple times.")
+parser.add_argument("-b", "--blacklist", action="append", default=[], type=_parse_blacklist,
+                    help="A file containing network prefixes in CIDR notation to exclude "
+                         "from tests. May be specified multiple times.", metavar="blacklist.txt")
 parser.add_argument("--nmap", action="append", default=[], type=_parse_nmap_xml,
                     help="XML output of an Nmap TCP port scan with targets to test. "
                          "May be specified multiple times.", metavar="targets.xml")
