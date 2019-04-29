@@ -80,9 +80,11 @@ parser = argparse.ArgumentParser(
     fromfile_prefix_chars="@"
 )
 parser.add_argument("target", nargs="*", default=[], type=_parse_target,
-                    help="a target to test (e.g. 203.0.113.1:8753 or [2001:db8::1]:4763)")
-parser.add_argument("-b", "--bind", action="append", type=ipaddress.ip_address, metavar="addr",
-                    help="An IPv4 or IPv6 address to bind to. May be specified multiple times.")
+                    help="a target to test (in URI notation, e.g. "
+                         "203.0.113.1:8753 or [2001:db8::1]:4763)")
+parser.add_argument("-B", "--bind", action="append", type=ipaddress.ip_address, metavar="addr",
+                    help="An IPv4 or IPv6 address to bind to. May be specified multiple times. "
+                         "Only the first address of each type will be used.")
 parser.add_argument("-r", "--rate", default=10_000, type=_parse_suffixed_int, metavar="pps",
                     help="Send rate in packets per second. Supports suffixes K, M, and G.")
 parser.add_argument("-T", "--test", action="append", type=_parse_test, metavar="TestClass",
