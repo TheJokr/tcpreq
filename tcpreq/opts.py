@@ -103,6 +103,8 @@ parser.add_argument("-r", "--rate", default=10_000, type=_parse_suffixed_int, me
 parser.add_argument("-T", "--test", action="append", type=_parse_test, metavar="TestClass",
                     help="A test to perform (subclass of tcpreq.tests.BaseTest). "
                          "May be specified multiple times.")
+parser.add_argument("-o", "--output", type=argparse.FileType("w", encoding="utf-8"), metavar="results.json",
+                    help="Output file to write to. File extension determines format.")
 parser.add_argument("-b", "--blacklist", action="append", default=[], type=_parse_blacklist,
                     help="A file containing network prefixes in CIDR notation to exclude "
                          "from tests. May be specified multiple times.", metavar="blacklist.txt")

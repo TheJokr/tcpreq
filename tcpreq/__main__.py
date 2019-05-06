@@ -1,4 +1,4 @@
-from typing import Type, Iterable, Sequence, List, Set, Tuple, Optional, Generator
+from typing import Type, Sequence, List, Set, Tuple, Optional, Generator
 import time
 import random
 import itertools
@@ -10,6 +10,7 @@ from pytricia import PyTricia
 
 from .types import AnyIPAddress
 from .opts import parser
+from .output import get_output_module
 from .limiter import TokenBucket
 from .net import IPv4TestMultiplexer, IPv6TestMultiplexer
 from .tests import BaseTest, DEFAULT_TESTS, TestResult
@@ -41,27 +42,6 @@ def _select_addrs() -> Generator[AnyIPAddress, None, None]:
         else:
             print()
             yield cls(addrs[sel - 1])  # type: ignore
-
-
-def _process_results(targets: Iterable[Tuple[AnyIPAddress, int]],
-                     futures: Iterable["asyncio.Future[TestResult]"]) -> None:
-    for tgt, f in zip(targets, futures):
-        tgt_str = "{0[0]}\t{0[1]}\t".format(tgt)
-        try:
-            res = f.result()
-        except asyncio.InvalidStateError as e:
-            raise ValueError("Futures are not done yet") from e
-        except asyncio.CancelledError:
-            pass
-        except Exception as e:
-            print(tgt_str + str(e))
-        else:
-            if res.stage is not None:
-                tgt_str += "Stage {}\t".format(res.stage)
-            out = tgt_str + res.status.name
-            if res.reason is not None:
-                out += ": " + res.reason
-            print(out)
 
 
 # Make sure to prevent the kernel TCP stack from interfering
@@ -112,6 +92,7 @@ def main() -> None:
     ipv6_plex = None if ipv6_src is None else IPv6TestMultiplexer(ipv6_src, limiter, loop=loop)
 
     # Run tests sequentially
+    output_mod = get_output_module(args.output)
     active_tests: Sequence[Type[BaseTest]] = args.test or DEFAULT_TESTS
     for idx, test in enumerate(active_tests):
         all_futs: List["asyncio.Future[TestResult]"] = []
@@ -139,9 +120,7 @@ def main() -> None:
         # to allow linking futures to their targets in _process_results
         print("Running", test.__name__)
         loop.run_until_complete(asyncio.wait(all_futs, loop=loop))
-        print(test.__name__, "results:")
-        _process_results(itertools.chain(ipv4_tgts, ipv6_tgts), all_futs)
-        print()
+        output_mod(test.__name__, itertools.chain(ipv4_tgts, ipv6_tgts), all_futs)
         time.sleep(5)
 
 

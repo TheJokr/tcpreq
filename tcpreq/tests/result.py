@@ -5,10 +5,11 @@ import enum
 class TestResultStatus(enum.Enum):
     PASS = enum.auto()
     UNK = enum.auto()
-    FAIL = enum.auto()
+    FAIL = enum.auto()  # for target-related failures
+    ERR = enum.auto()  # for test-related failures
 
 
-# Aliases for TestResultStatus members
+# Aliases for "public" TestResultStatus members
 TEST_PASS = TestResultStatus.PASS
 TEST_UNK = TestResultStatus.UNK
 TEST_FAIL = TestResultStatus.FAIL
