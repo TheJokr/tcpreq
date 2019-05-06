@@ -1,5 +1,6 @@
 from typing import Awaitable, List, Tuple, Counter as CounterType, Optional
 import sys
+import time
 from collections import deque, Counter
 import random
 import asyncio
@@ -67,10 +68,8 @@ class ChecksumTest(BaseTest):
                     break
                 else:
                     res_stat = 3
-            elif verified:
-                res_stat = 2
             else:
-                res_stat = 1
+                res_stat = 1 + verified
 
         # Clear queues (might contain challenge ACKs due to multiple SYNs reaching the target)
         await asyncio.sleep(10)
@@ -169,6 +168,20 @@ class ChecksumTest(BaseTest):
 
         return ttl, cs_vrfy
 
+    async def receive_vrfyres(self, timeout: float) -> Optional[Segment]:
+        while timeout > 0:
+            start = time.monotonic()
+            data = await asyncio.wait_for(self.recv_queue.get(), timeout, loop=self._loop)
+            timeout -= (time.monotonic() - start)
+
+            try:
+                return Segment.from_bytes(self.dst[0].packed, self.src[0].packed, data)
+            except ValueError as e:
+                if str(e) == "Checksum mismatch":
+                    return None
+
+        raise asyncio.TimeoutError()
+
     async def run(self) -> TestResult:
         result = await self._detect_interference()
         if result is not None:
@@ -252,15 +265,19 @@ class ChecksumTest(BaseTest):
         result = None
         try:
             # TODO: change timeout?
-            ack_res = await self.receive(timeout=30)
+            ack_res = await self.receive_vrfyres(timeout=30)
         except asyncio.TimeoutError:
             # Dropping the segment silently is acceptable
             result = TestResult(TEST_PASS)
             ack_res = syn_res  # For ack_res.make_reset below
         else:
-            # Retransmission of SYN-ACK is acceptable (similar to timeout)
-            if (ack_res.flags == syn_res.flags and ack_res.seq == syn_res.seq and
+            if ack_res is None:
+                result = TestResult(TEST_FAIL, 3,
+                                    "Incorrect checksum in reply to ACK with incorrect checksum")
+                ack_res = syn_res  # For ack_res.make_reset below
+            elif (ack_res.flags == syn_res.flags and ack_res.seq == syn_res.seq and
                     ack_res.ack_seq == syn_res.ack_seq):
+                # Retransmission of SYN-ACK is acceptable (similar to timeout)
                 result = TestResult(TEST_PASS)
             elif not (ack_res.flags & 0x04):
                 result = TestResult(TEST_FAIL, 3, "Non-RST in reply to ACK with incorrect checksum")
@@ -278,11 +295,15 @@ class ChecksumTest(BaseTest):
     async def _check_syn_resp(self, sent_seq: int, test_stage: int) -> Optional[TestResult]:
         try:
             # TODO: change timeout?
-            res = await self.receive(timeout=60)
+            res = await self.receive_vrfyres(timeout=60)
         except asyncio.TimeoutError:
             # Dropping the segment silently is acceptable
             pass
         else:
+            if res is None:
+                return TestResult(TEST_FAIL, test_stage,
+                                  "Incorrect checksum in reply to SYN with incorrect checksum")
+
             exp_ack = (sent_seq + 1) % 0x1_0000_0000
             if not (res.flags & 0x04):
                 # Reset connection to be sure
