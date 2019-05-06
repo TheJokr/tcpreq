@@ -92,18 +92,23 @@ class BaseTestMultiplexer(Generic[IPAddressType]):
         pass
 
     def _handle_bytes(self, src_addr: IPAddressType, data: bytearray) -> None:
-        remote_src = src_addr.packed
-        try:
-            seg = Segment.from_bytes(remote_src, self._src_addr.packed, data)
-        except ValueError:
-            # Discard invalid segments silently
+        if len(data) < 4:
+            # Discard segments not containing both ports silently
             return
-        try:
-            self._test_map[(seg.dst_port, remote_src, seg.src_port)].recv_queue.put_nowait(seg)
-        except KeyError:
-            return self._handle_unk_src(src_addr, seg)
 
-    def _handle_unk_src(self, src_addr: IPAddressType, seg: Segment) -> None:
+        sport = int.from_bytes(data[0:2], "big")
+        dport = int.from_bytes(data[2:4], "big")
+        try:
+            self._test_map[(dport, src_addr.packed, sport)].recv_queue.put_nowait(data)
+        except KeyError:
+            return self._handle_unk_src(src_addr, data)
+
+    def _handle_unk_src(self, src_addr: IPAddressType, data: bytearray) -> None:
+        try:
+            seg = Segment.from_bytes(src_addr.packed, self._src_addr.packed, data)
+        except ValueError:
+            return
+
         # tcpreq always uses ephemeral ports. Don't interfere with other connections.
         if seg.dst_port < 49152 or seg.flags & 0x04:
             return
