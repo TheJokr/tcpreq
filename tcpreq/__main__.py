@@ -79,9 +79,7 @@ def main() -> None:
     ipv6_tgts = list(ipv6_set)
     del ipv4_bl, ipv6_bl, ipv4_set, ipv6_set
     if not ipv4_tgts and not ipv6_tgts:
-        parser.print_usage()
-        print(parser.prog + ": error: at least one valid target is required")
-        return
+        parser.error("at least one valid target is required")
 
     # Setup sockets/multiplexers
     # Both multiplexers share a token bucket with a precision of 1/8th of a second

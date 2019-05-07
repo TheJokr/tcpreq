@@ -8,7 +8,7 @@ import csv
 from .types import AnyIPAddress, AnyIPNetwork
 from . import tests
 
-_INT_MULTS = {'k': 1_000, 'm': 1_000_000, 'g': 1_000_000_000}
+_INT_MULTS = {"k": 1_000, "m": 1_000_000, "g": 1_000_000_000}
 
 
 def _parse_target(value: str) -> Tuple[AnyIPAddress, int]:
