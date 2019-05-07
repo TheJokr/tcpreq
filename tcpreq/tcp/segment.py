@@ -13,6 +13,8 @@ class Segment(object):
     _TCP_HEAD: ClassVar[struct.Struct] = struct.Struct(">HHIIBBHHH")
     assert _TCP_HEAD.size == 20
 
+    __slots__ = ("_head_len", "_raw", "_options")
+
     # src, dst are (addr: IPAddressType, port: int) tuples. flags int takes precedence over bools.
     def __init__(self, src: Tuple[IPAddressType, int], dst: Tuple[IPAddressType, int],
                  seq: int, window: int, ack_seq: int = 0, cwr: bool = False, ece: bool = False,

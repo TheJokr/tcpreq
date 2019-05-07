@@ -4,6 +4,8 @@ from typing import TypeVar, Type, Dict, Union, Generator
 # Options are immutable
 class BaseOption(object):
     """Common base class for all options."""
+    __slots__ = ("_raw",)
+
     def __init__(self, data: bytes) -> None:
         self._raw = data
 
@@ -24,6 +26,8 @@ class BaseOption(object):
 
 class _LegacyOption(BaseOption):
     """Class for the two option kinds without a length octet."""
+    __slots__ = ()
+
     def __init__(self, kind: int) -> None:
         super(_LegacyOption, self).__init__(kind.to_bytes(1, "big"))
 
@@ -45,6 +49,8 @@ _T = TypeVar("_T", bound="SizedOption")
 
 class SizedOption(BaseOption):
     """Base class for all option kinds with a length octet."""
+    __slots__ = ()
+
     def __init__(self, kind: int, payload: bytes) -> None:
         opt_head = bytes((kind, len(payload)))
         super(SizedOption, self).__init__(opt_head + payload)
@@ -72,6 +78,8 @@ class SizedOption(BaseOption):
 
 
 class MSSOption(SizedOption):
+    __slots__ = ()
+
     def __init__(self, mss: int) -> None:
         super(MSSOption, self).__init__(2, mss.to_bytes(2, "big"))
 
