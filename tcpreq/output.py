@@ -9,6 +9,8 @@ from .tests import TestResult
 
 
 class _BaseOutput(metaclass=ABCMeta):
+    __slots__ = ("_stream",)
+
     def __init__(self, stream: TextIO) -> None:
         self._stream = stream
 
@@ -19,6 +21,8 @@ class _BaseOutput(metaclass=ABCMeta):
 
 
 class _JSONLinesOutput(_BaseOutput):
+    __slots__ = ()
+
     def __call__(self, test_name: str, targets: Iterable[Tuple[AnyIPAddress, int]],
                  futures: Iterable["asyncio.Future[TestResult]"]) -> None:
         for tgt, f in zip(targets, futures):

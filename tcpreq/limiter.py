@@ -7,6 +7,8 @@ class OutOfTokensError(Exception):
 
 
 class TokenBucket(object):
+    __slots__ = ("_tokens", "_cap", "_increment", "_interval", "_last_update")
+
     def __init__(self, refill_amount: int, refill_interval: float, cap: int) -> None:
         self._tokens = self._cap = cap
         self._increment = refill_amount

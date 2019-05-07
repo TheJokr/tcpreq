@@ -1,4 +1,3 @@
-from typing import NamedTuple, Optional
 import enum
 
 
@@ -15,7 +14,10 @@ TEST_UNK = TestResultStatus.UNK
 TEST_FAIL = TestResultStatus.FAIL
 
 
-class TestResult(NamedTuple):
-    status: TestResultStatus
-    stage: Optional[int] = None
-    reason: Optional[str] = None
+class TestResult(object):
+    __slots__ = ("status", "stage", "reason")
+
+    def __init__(self, status: TestResultStatus, stage: int = None, reason: str = None) -> None:
+        self.status = status
+        self.stage = stage
+        self.reason = reason
