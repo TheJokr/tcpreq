@@ -18,6 +18,8 @@ class BaseTest(Generic[IPAddressType]):
     # Make sure _HOP_LIMIT can be encoded into IHL+options (39 possible non-zero values).
     assert _HOP_LIMIT <= 39
 
+    __slots__ = ("src", "dst", "recv_queue", "quote_queue", "send_queue", "_loop")
+
     def __init__(self, src: Tuple[IPAddressType, int], dst: Tuple[IPAddressType, int],
                  loop: asyncio.AbstractEventLoop = None) -> None:
         if loop is None:

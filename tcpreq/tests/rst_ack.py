@@ -7,6 +7,9 @@ from ..tcp import Segment
 
 
 class RSTACKTest(BaseTest):
+    """Test response to resets with the ACK flag set."""
+    __slots__ = ()
+
     async def run(self) -> TestResult:
         cur_seq = random.randrange(0, 1 << 32)
         syn_seg = Segment(self.src, self.dst, seq=cur_seq, window=1024, syn=True)

@@ -15,6 +15,8 @@ from ..tcp.checksum import calc_checksum
 # E.g. ethtool -K <DEVNAME> tx off on Linux
 class ChecksumTest(BaseTest):
     """Evaluate response to incorrect checksums in SYNs and after handshake."""
+    __slots__ = ()
+
     async def _detect_interference(self) -> Optional[TestResult]:
         # Test path for checksum modifiers
         src_addr = self.src[0].packed
