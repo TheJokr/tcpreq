@@ -1,11 +1,11 @@
-from typing import ClassVar, List
+from typing import ClassVar, List, Tuple
 
 from .base import BaseProtocol
 
 
 # Version 1.1 only
 class HTTPProtocol(BaseProtocol):
-    port: ClassVar[int] = 80
+    ports: ClassVar[Tuple[int, ...]] = (80,)
     _TYPES: ClassVar[List[bytes]] = [
         b"*/*; q=0.300", b"text/html; q=0.999", b"application/xhtml+xml; q=1.000",
         b"application/xml; q=0.900", b"text/xml; q=0.900", b"application/json; q=0.650",

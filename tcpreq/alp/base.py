@@ -13,7 +13,7 @@ class BaseProtocol(Generic[IPAddressType]):
 
     @property
     @abstractmethod
-    def port(self) -> int:
+    def ports(self) -> Tuple[int, ...]:
         # Should be overwritten by a ClassVar
         pass
 
