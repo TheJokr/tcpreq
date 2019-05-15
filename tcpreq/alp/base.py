@@ -1,4 +1,4 @@
-from typing import Generic, Tuple
+from typing import Generic, Tuple, Optional
 from abc import abstractmethod
 
 from ..types import IPAddressType
@@ -18,7 +18,7 @@ class BaseProtocol(Generic[IPAddressType]):
         pass
 
     @abstractmethod
-    def pull_data(self, length_hint: int = None) -> bytes:
+    def pull_data(self, length_hint: int = None) -> Optional[bytes]:
         pass
 
     @abstractmethod
