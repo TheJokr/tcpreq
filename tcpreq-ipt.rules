@@ -1,0 +1,14 @@
+# Delete afterwards with:
+# ip(6)tables -D OUTPUT -p tcp --sport 49152: -j tcpreq
+# ip(6)tables -F tcpreq
+# ip(6)tables -X tcpreq
+# The tcpreq chain filters all TCP segments from the ports used
+# by tcpreq unless the socket was created by the user with ID 1001
+# Whitelisting is necessary because the kernel skips owner checks
+*filter
+:OUTPUT ACCEPT
+:tcpreq -
+-A OUTPUT -p tcp --sport 49152: -j tcpreq
+-A tcpreq -m owner --uid-owner 1001 -j ACCEPT
+-A tcpreq -j DROP
+COMMIT
