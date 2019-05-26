@@ -1,6 +1,7 @@
 from typing import Type, Callable, Iterable, Dict, Tuple, TextIO, Optional
 from abc import ABCMeta, abstractmethod
 import os
+import time
 import json
 import asyncio
 
@@ -21,27 +22,35 @@ class _BaseOutput(metaclass=ABCMeta):
 
 
 class _JSONLinesOutput(_BaseOutput):
+    _TS_FMT = "%Y-%m-%dT%H:%M:%SZ"
+
     __slots__ = ()
 
     def __call__(self, test_name: str, targets: Iterable[Tuple[AnyIPAddress, int]],
                  futures: Iterable["asyncio.Future[TestResult]"]) -> None:
         for tgt, f in zip(targets, futures):
-            o = {"test": test_name, "ip": str(tgt[0]), "port": tgt[1],
-                 "status": None, "stage": None, "reason": None}
+            o: Dict = {"test": test_name, "timestamp": None, "custom": None,
+                       "src": {"ip": None, "port": None}, "dst": {"ip": str(tgt[0]), "port": tgt[1]},
+                       "status": None, "stage": None, "reason": None}
 
             try:
                 res = f.result()
             except asyncio.InvalidStateError as e:
                 raise ValueError("Futures are not done yet") from e
             except asyncio.CancelledError:
-                pass
+                continue
             except Exception as e:
+                o["timestamp"] = time.strftime(self._TS_FMT, time.gmtime())
                 o["status"] = "ERR"
                 o["reason"] = str(e)
             else:
+                o["timestamp"] = time.strftime(self._TS_FMT, time.gmtime(res.time))
+                o["src"]["ip"] = str(res.src[0])
+                o["src"]["port"] = res.src[1]
                 o["status"] = res.status.name
                 o["stage"] = res.stage
                 o["reason"] = res.reason
+                o["custom"] = res.custom
 
             json.dump(o, self._stream)
             self._stream.write("\n")
@@ -58,7 +67,7 @@ def _print_results(test_name: str, targets: Iterable[Tuple[AnyIPAddress, int]],
         except asyncio.InvalidStateError as e:
             raise ValueError("Futures are not done yet") from e
         except asyncio.CancelledError:
-            pass
+            continue
         except Exception as e:
             print(out + "ERR: " + str(e))
         else:
