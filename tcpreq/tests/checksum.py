@@ -49,7 +49,7 @@ class ChecksumTest(BaseTest):
 
         result = await self._check_syn_resp(seq, 0)
         if result is not None:
-            result = TestResult(TEST_UNK, 0, result.reason + " (middlebox interference?)")  # type: ignore
+            result = TestResult(self, TEST_UNK, 0, result.reason + " (middlebox interference?)")  # type: ignore
 
         res_stat = 0
         hops = filter(None, (self._check_quote(*item, checksum=cs) for item in self.quote_queue))
@@ -63,7 +63,7 @@ class ChecksumTest(BaseTest):
             reason = "Middlebox interference detected"
             reason += " at or before hop {0}" if mbox_hop > 0 else " at unknown hop"
             reason += " (checksum corrected)" if verified else " (checksum modified)"
-            result = TestResult(TEST_UNK, 0, reason.format(mbox_hop))
+            result = TestResult(self, TEST_UNK, 0, reason.format(mbox_hop))
 
             if mbox_hop > 0:
                 if verified:
@@ -91,7 +91,7 @@ class ChecksumTest(BaseTest):
         if cs == checksum:
             return None
 
-        # Checksum is modified, but could be wrong still (incremental update)
+        # Checksum is modified, but could still be wrong (incremental update)
         ttl = 0
         ttl_count: CounterType[int] = Counter()
         ttl_guess = min(ttl_guess, self._HOP_LIMIT)
@@ -239,13 +239,13 @@ class ChecksumTest(BaseTest):
             # TODO: change timeout?
             syn_res = await self.receive(timeout=30)
         except asyncio.TimeoutError:
-            return TestResult(TEST_UNK, 3, "Timeout during handshake")
+            return TestResult(self, TEST_UNK, 3, "Timeout during handshake")
         if syn_res.flags & 0x04 and syn_res.ack_seq == cur_seq:
-            return TestResult(TEST_UNK, 3, "RST in reply to SYN during handshake")
+            return TestResult(self, TEST_UNK, 3, "RST in reply to SYN during handshake")
         elif (syn_res.flags & 0x12) != 0x12:
-            result = TestResult(TEST_FAIL, 3, "Non-SYN-ACK in reply to SYN during handshake")
+            result = TestResult(self, TEST_FAIL, 3, "Non-SYN-ACK in reply to SYN during handshake")
         elif syn_res.ack_seq != cur_seq:
-            result = TestResult(TEST_FAIL, 3, "Wrong SEQ acked in reply to SYN during handshake")
+            result = TestResult(self, TEST_FAIL, 3, "Wrong SEQ acked in reply to SYN during handshake")
 
         if result is not None:
             # Reset connection to be sure
@@ -270,25 +270,26 @@ class ChecksumTest(BaseTest):
             ack_res = await self.receive_vrfyres(timeout=30)
         except asyncio.TimeoutError:
             # Dropping the segment silently is acceptable
-            result = TestResult(TEST_PASS)
+            result = TestResult(self, TEST_PASS)
             ack_res = syn_res  # For ack_res.make_reset below
         else:
             if ack_res is None:
-                result = TestResult(TEST_FAIL, 3,
+                result = TestResult(self, TEST_FAIL, 3,
                                     "Incorrect checksum in reply to ACK with incorrect checksum")
                 ack_res = syn_res  # For ack_res.make_reset below
             elif (ack_res.flags == syn_res.flags and ack_res.seq == syn_res.seq and
                     ack_res.ack_seq == syn_res.ack_seq):
                 # Retransmission of SYN-ACK is acceptable (similar to timeout)
-                result = TestResult(TEST_PASS)
+                result = TestResult(self, TEST_PASS)
             elif not (ack_res.flags & 0x04):
-                result = TestResult(TEST_FAIL, 3, "Non-RST in reply to ACK with incorrect checksum")
+                result = TestResult(self, TEST_FAIL, 3,
+                                    "Non-RST in reply to ACK with incorrect checksum")
             elif not check_window(ack_res.seq, ack_seg.ack_seq,
                                   (ack_seg.ack_seq + ack_seg.window) % 0x1_0000_0000):
-                return TestResult(TEST_FAIL, 3,
+                return TestResult(self, TEST_FAIL, 3,
                                   "Invalid RST in reply to ACK with incorrect checksum")
             else:
-                return TestResult(TEST_PASS)
+                return TestResult(self, TEST_PASS)
 
         # Reset connection to be sure
         await self.send(ack_res.make_reset(self.src[0], self.dst[0]))
@@ -303,17 +304,17 @@ class ChecksumTest(BaseTest):
             pass
         else:
             if res is None:
-                return TestResult(TEST_FAIL, test_stage,
+                return TestResult(self, TEST_FAIL, test_stage,
                                   "Incorrect checksum in reply to SYN with incorrect checksum")
 
             exp_ack = (sent_seq + 1) % 0x1_0000_0000
             if not (res.flags & 0x04):
                 # Reset connection to be sure
                 await self.send(res.make_reset(self.src[0], self.dst[0]))
-                return TestResult(TEST_FAIL, test_stage,
+                return TestResult(self, TEST_FAIL, test_stage,
                                   "Non-RST in reply to SYN with incorrect checksum")
             elif res.ack_seq != exp_ack:
-                return TestResult(TEST_FAIL, test_stage,
+                return TestResult(self, TEST_FAIL, test_stage,
                                   "Invalid RST in reply to SYN with incorrect checksum")
 
         return None

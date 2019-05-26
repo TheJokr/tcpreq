@@ -22,13 +22,13 @@ class RSTACKTest(BaseTest):
             # TODO: change timeout?
             syn_res = await self.receive(timeout=30)
         except asyncio.TimeoutError:
-            return TestResult(TEST_UNK, 1, "Timeout during handshake")
+            return TestResult(self, TEST_UNK, 1, "Timeout during handshake")
         if syn_res.flags & 0x04 and syn_res.ack_seq == cur_seq:
-            return TestResult(TEST_UNK, 1, "RST in reply to SYN during handshake")
+            return TestResult(self, TEST_UNK, 1, "RST in reply to SYN during handshake")
         elif (syn_res.flags & 0x12) != 0x12:
-            result = TestResult(TEST_FAIL, 1, "Non-SYN-ACK in reply to SYN during handshake")
+            result = TestResult(self, TEST_FAIL, 1, "Non-SYN-ACK in reply to SYN during handshake")
         elif syn_res.ack_seq != cur_seq:
-            result = TestResult(TEST_FAIL, 1, "Wrong SEQ acked in reply to SYN during handshake")
+            result = TestResult(self, TEST_FAIL, 1, "Wrong SEQ acked in reply to SYN during handshake")
 
         if result is not None:
             # Reset connection to be sure
@@ -42,10 +42,10 @@ class RSTACKTest(BaseTest):
             # TODO: change timeout?
             rstack_res = await self.receive(timeout=60)
         except asyncio.TimeoutError:
-            return TestResult(TEST_PASS)
+            return TestResult(self, TEST_PASS)
         if rstack_res.flags & 0x04 and rstack_res.seq == rstack_seg.ack_seq:
-            return TestResult(TEST_PASS)
+            return TestResult(self, TEST_PASS)
 
         # RST-ACK ignored; send non-ACK RST
         await self.send(syn_res.make_reset(self.src[0], self.dst[0]))
-        return TestResult(TEST_FAIL, 1, "RST-ACK ignored")
+        return TestResult(self, TEST_FAIL, 1, "RST-ACK ignored")

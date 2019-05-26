@@ -1,4 +1,9 @@
+from typing import TYPE_CHECKING, Dict
 import enum
+import time
+
+if TYPE_CHECKING:
+    from .base import BaseTest
 
 
 class TestResultStatus(enum.Enum):
@@ -15,9 +20,13 @@ TEST_FAIL = TestResultStatus.FAIL
 
 
 class TestResult(object):
-    __slots__ = ("status", "stage", "reason")
+    __slots__ = ("time", "src", "status", "stage", "reason", "custom")
 
-    def __init__(self, status: TestResultStatus, stage: int = None, reason: str = None) -> None:
+    def __init__(self, test: "BaseTest", status: TestResultStatus,
+                 stage: int = None, reason: str = None, custom: Dict = None) -> None:
+        self.time = time.time()
+        self.src = test.src
         self.status = status
         self.stage = stage
         self.reason = reason
+        self.custom = custom
