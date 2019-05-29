@@ -332,17 +332,17 @@ class IPv6TestMultiplexer(BaseTestMultiplexer[IPv6Address]):
                 # Kernel verifies checksum for ICMPv6 sockets
                 data, src = self._icmp_sock.recvfrom(4096)  # TODO: increase if necessary
                 dlen = len(data)
-                if dlen < 4:
+                if dlen < 8:
                     continue
 
                 if data[0] == _ICMPV6_TIME_EXCEED and data[1] == _ICMPV6_EXC_HOPLIMIT:
-                    if dlen < 44:
+                    if dlen < 48:
                         continue
 
-                    next_head = data[10]
-                    src_addr = data[12:28]
-                    dst_addr = data[28:44]
-                    data = data[44:]
+                    next_head = data[14]
+                    src_addr = data[16:32]
+                    dst_addr = data[32:48]
+                    data = data[48:]
 
                     quote = self._walk_header_chain(next_head, data)
                     if quote is None:
