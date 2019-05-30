@@ -11,6 +11,10 @@ from ..tcp import Segment, check_window, noop_option, end_of_options
 from ..tcp.checksum import calc_checksum
 
 
+def _bytes_int_xor(lhs: bytes, rhs: int) -> bytes:
+    return (int.from_bytes(lhs, sys.byteorder) ^ rhs).to_bytes(len(lhs), sys.byteorder)
+
+
 # Make sure TCP TX checksum offloading is disabled
 # E.g. ethtool -K <DEVNAME> tx off on Linux
 class ChecksumTest(BaseTest):
@@ -31,16 +35,16 @@ class ChecksumTest(BaseTest):
             enc_16 = (ttl << 11) | (ttl << 5) | ttl
             enc_32 = (enc_16 << 16) | enc_16
             opts.appendleft(noop_option)
-            syn_seg = Segment(self.src, self.dst, seq=seq, window=enc_16, ack_seq=enc_32,
-                              syn=True, checksum=cs, up=enc_16, options=opts)
+            syn_seg = Segment(self.src, self.dst, seq=seq, window=enc_16,
+                              ack_seq=enc_32, syn=True, up=enc_16, options=opts)
 
-            seg_arr = bytearray(bytes(syn_seg))
-            seg_arr[16:18] = b"\x00\x00"
-            if calc_checksum(src_addr, dst_addr, seg_arr) == cs:
+            seg_arr = bytearray(syn_seg._raw)
+            if syn_seg.checksum == cs:
                 # Set unused bit in enc_16 to 1 to change real checksum
-                enc_16 |= 0x0400
-                syn_seg = Segment(self.src, self.dst, seq=seq, window=enc_16, ack_seq=enc_32,
-                                  syn=True, checksum=cs, up=enc_16, options=opts)
+                seg_arr[14] |= 0x04
+                seg_arr[18] |= 0x04
+            seg_arr[16:18] = cs
+            syn_seg._raw = bytes(seg_arr)
 
             futs.append(self.send(syn_seg, ttl=ttl))
         del src_addr, dst_addr, opts, syn_seg, seg_arr
@@ -190,18 +194,16 @@ class ChecksumTest(BaseTest):
             return result
 
         # Send SYN with incorrect checksum
-        # Try random checksums until one doesn't match
-        cur_seq = random.randrange(0, 1 << 32)
-        cs_wrong = False
-        while not cs_wrong:
-            cs = random.randrange(0, 1 << 16).to_bytes(2, sys.byteorder)
-            syn_seg = Segment(self.src, self.dst, seq=cur_seq, window=1024, syn=True, checksum=cs)
+        cur_seq = random.randint(0, 0xffff_ffff)
+        syn_seg = Segment(self.src, self.dst, seq=cur_seq, window=1024, syn=True)
 
-            seg_arr = bytearray(bytes(syn_seg))
-            seg_arr[16:18] = b"\x00\x00"
-            cs_wrong = (calc_checksum(self.src[0].packed, self.dst[0].packed, seg_arr) != cs)
+        seg_arr = bytearray(syn_seg._raw)
+        seg_arr[16:18] = _bytes_int_xor(seg_arr[16:18], random.randint(1, 0xffff))
+        syn_seg._raw = bytes(seg_arr)
+        del seg_arr
+
         await self.send(syn_seg)
-        del syn_seg, seg_arr
+        del syn_seg
 
         result = await self._check_syn_resp(cur_seq, test_stage=1)
         if result is not None:
@@ -209,17 +211,20 @@ class ChecksumTest(BaseTest):
 
         # Send SYN with zero checksum (special case, middleboxes?)
         cur_seq = (cur_seq + 2048) % 0x1_0000_000
-        cs = b"\x00\x00"
         win = 1023
-        cs_wrong = False
-        while not cs_wrong:
+        while True:
             win += 1
-            syn_seg = Segment(self.src, self.dst, seq=cur_seq, window=win, syn=True, checksum=cs)
+            syn_seg = Segment(self.src, self.dst, seq=cur_seq, window=win, syn=True)
 
-            seg_raw = bytes(syn_seg)
-            cs_wrong = (calc_checksum(self.src[0].packed, self.dst[0].packed, seg_raw) != cs)
+            if syn_seg.checksum != b"\x00\x00":
+                seg_arr = bytearray(syn_seg._raw)
+                seg_arr[16:18] = b"\x00\x00"
+                syn_seg._raw = bytes(seg_arr)
+                del seg_arr
+                break
+
         await self.send(syn_seg)
-        del syn_seg, seg_raw
+        del syn_seg
 
         result = await self._check_syn_resp(cur_seq, test_stage=2)
         if result is not None:
@@ -252,17 +257,14 @@ class ChecksumTest(BaseTest):
             await self.send(syn_res.make_reset(self.src[0], self.dst[0]))
             return result
 
-        cs_wrong = False
-        while not cs_wrong:
-            cs = random.randrange(0, 1 << 16).to_bytes(2, sys.byteorder)
-            ack_seg = syn_res.make_reply(self.src[0], self.dst[0], window=512,
-                                         ack=True, checksum=cs)
+        ack_seg = syn_res.make_reply(self.src[0], self.dst[0], window=512, ack=True)
 
-            seg_arr = bytearray(bytes(ack_seg))
-            seg_arr[16:18] = b"\x00\x00"
-            cs_wrong = (calc_checksum(self.src[0].packed, self.dst[0].packed, seg_arr) != cs)
-        await self.send(ack_seg)
+        seg_arr = bytearray(ack_seg._raw)
+        seg_arr[16:18] = _bytes_int_xor(seg_arr[16:18], random.randint(1, 0xffff))
+        ack_seg._raw = bytes(seg_arr)
         del seg_arr
+
+        await self.send(ack_seg)
 
         result = None
         try:

@@ -19,8 +19,8 @@ class Segment(object):
     def __init__(self, src: Tuple[IPAddressType, int], dst: Tuple[IPAddressType, int],
                  seq: int, window: int, ack_seq: int = 0, cwr: bool = False, ece: bool = False,
                  urg: bool = False, ack: bool = False, psh: bool = False, rst: bool = False,
-                 syn: bool = False, fin: bool = False, flags: int = None, checksum: bytes = None,
-                 up: int = 0, options: Sequence[BaseOption] = (), payload: bytes = b'') -> None:
+                 syn: bool = False, fin: bool = False, flags: int = None, up: int = 0,
+                 options: Sequence[BaseOption] = (), payload: bytes = b'') -> None:
         opt_len = sum(len(o) for o in options)
         head_rows = 5
         if opt_len:
@@ -41,10 +41,8 @@ class Segment(object):
         if opt_len:
             head[20:20 + opt_len] = b''.join(map(bytes, options))
 
-        if checksum is None:
-            # Checksum field is explicitly set to zero in _TCP_HEAD.pack_into call
-            checksum = calc_checksum(src[0].packed, dst[0].packed, head, payload)
-        head[16:18] = checksum
+        # Checksum field is explicitly set to zero in _TCP_HEAD.pack_into call
+        head[16:18] = calc_checksum(src[0].packed, dst[0].packed, head, payload)
 
         self._raw = bytes(head) + payload
         self._options = tuple(options)
@@ -53,9 +51,8 @@ class Segment(object):
     def make_reply(self, src_addr: IPAddressType, dst_addr: IPAddressType, window: int,
                    seq: int = None, ack_seq: int = None, cwr: bool = False, ece: bool = False,
                    urg: bool = False, ack: bool = False, psh: bool = False, rst: bool = False,
-                   syn: bool = False, fin: bool = False, flags: int = None, checksum: bytes = None,
-                   up: int = 0, options: Sequence[BaseOption] = (),
-                   payload: bytes = b'') -> "Segment":
+                   syn: bool = False, fin: bool = False, flags: int = None, up: int = 0,
+                   options: Sequence[BaseOption] = (), payload: bytes = b'') -> "Segment":
         if seq is None or seq < 0:
             if self.flags & 0x10:
                 seq = self.ack_seq
@@ -73,7 +70,7 @@ class Segment(object):
         src = (src_addr, self.dst_port)
         dst = (dst_addr, self.src_port)
         return Segment(src, dst, seq, window, ack_seq, cwr, ece, urg, ack,
-                       psh, rst, syn, fin, flags, checksum, up, options, payload)
+                       psh, rst, syn, fin, flags, up, options, payload)
 
     def make_reset(self, src_addr: IPAddressType, dst_addr: IPAddressType) -> "Segment":
         # Per RFC 793bis, section 3.4, "Reset Generation", 1. and 2.
