@@ -21,12 +21,12 @@ class ChecksumTest(BaseTest):
     """Evaluate response to incorrect checksums in SYNs and after handshake."""
     __slots__ = ()
 
+    # Test path for checksum modifiers
     async def _detect_interference(self) -> Optional[TestResult]:
-        # Test path for checksum modifiers
         src_addr = self.src[0].packed
         dst_addr = self.dst[0].packed
-        seq = random.randrange(0, 1 << 32)
-        cs = random.randrange(0, 1 << 16).to_bytes(2, sys.byteorder)
+        seq = random.randint(0, 0xffff_ffff)
+        cs = random.randint(0, 0xffff).to_bytes(2, sys.byteorder)
         opts = deque((end_of_options,))
         futs: List[Awaitable[None]] = []
 
@@ -51,10 +51,11 @@ class ChecksumTest(BaseTest):
         await asyncio.wait(futs, loop=self._loop)
         del futs
 
-        result = await self._check_syn_resp(seq, 0)
+        result = await self._check_syn_resp(seq, test_stage=0)
         if result is not None:
             result = TestResult(self, TEST_UNK, 0, result.reason + " (middlebox interference?)")  # type: ignore
 
+        await asyncio.sleep(10, loop=self._loop)
         res_stat = 0
         hops = filter(None, (self._check_quote(*item, checksum=cs) for item in self.quote_queue))
         for mbox_hop, verified in hops:
@@ -78,7 +79,6 @@ class ChecksumTest(BaseTest):
                 res_stat = 1 + verified
 
         # Clear queues (might contain challenge ACKs due to multiple SYNs reaching the target)
-        await asyncio.sleep(10)
         self.quote_queue.clear()
         self.recv_queue = asyncio.Queue(loop=self._loop)
 

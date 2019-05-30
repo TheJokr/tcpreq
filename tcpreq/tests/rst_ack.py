@@ -11,7 +11,7 @@ class RSTACKTest(BaseTest):
     __slots__ = ()
 
     async def run(self) -> TestResult:
-        cur_seq = random.randrange(0, 1 << 32)
+        cur_seq = random.randint(0, 0xffff_ffff)
         syn_seg = Segment(self.src, self.dst, seq=cur_seq, window=1024, syn=True)
         await self.send(syn_seg)
         del syn_seg
