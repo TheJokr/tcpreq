@@ -106,8 +106,7 @@ class Segment(object):
         if checksum != check_old:
             raise ValueError("Checksum mismatch")
 
-        # parse_options consumes used data so it must be copied here
-        opt_data = bytearray(data[20:head_len])
+        opt_data = data[20:head_len]
         options = tuple(parse_options(opt_data))
         if any(b != 0 for b in opt_data):
             raise ValueError("Illegal end-of-header padding")
