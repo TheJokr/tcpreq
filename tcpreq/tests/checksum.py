@@ -36,7 +36,7 @@ class ChecksumTest(BaseTest):
 
             seg_arr = bytearray(bytes(syn_seg))
             seg_arr[16:18] = b"\x00\x00"
-            if calc_checksum(src_addr, dst_addr, b'', seg_arr) == cs:
+            if calc_checksum(src_addr, dst_addr, seg_arr) == cs:
                 # Set unused bit in enc_16 to 1 to change real checksum
                 enc_16 |= 0x0400
                 syn_seg = Segment(self.src, self.dst, seq=seq, window=enc_16, ack_seq=enc_32,
@@ -113,7 +113,7 @@ class ChecksumTest(BaseTest):
                 # Verify checksum if full header is included
                 seg = bytearray(quote)
                 seg[16:18] = b"\x00\x00"
-                cs_vrfy = (calc_checksum(src_addr, self.dst[0].packed, b'', seg) == cs)
+                cs_vrfy = (calc_checksum(src_addr, self.dst[0].packed, seg) == cs)
                 if not cs_vrfy:
                     # Checksum is still incorrect
                     return None
@@ -199,7 +199,7 @@ class ChecksumTest(BaseTest):
 
             seg_arr = bytearray(bytes(syn_seg))
             seg_arr[16:18] = b"\x00\x00"
-            cs_wrong = (calc_checksum(self.src[0].packed, self.dst[0].packed, b'', seg_arr) != cs)
+            cs_wrong = (calc_checksum(self.src[0].packed, self.dst[0].packed, seg_arr) != cs)
         await self.send(syn_seg)
         del syn_seg, seg_arr
 
@@ -217,7 +217,7 @@ class ChecksumTest(BaseTest):
             syn_seg = Segment(self.src, self.dst, seq=cur_seq, window=win, syn=True, checksum=cs)
 
             seg_raw = bytes(syn_seg)
-            cs_wrong = (calc_checksum(self.src[0].packed, self.dst[0].packed, b'', seg_raw) != cs)
+            cs_wrong = (calc_checksum(self.src[0].packed, self.dst[0].packed, seg_raw) != cs)
         await self.send(syn_seg)
         del syn_seg, seg_raw
 
@@ -260,7 +260,7 @@ class ChecksumTest(BaseTest):
 
             seg_arr = bytearray(bytes(ack_seg))
             seg_arr[16:18] = b"\x00\x00"
-            cs_wrong = (calc_checksum(self.src[0].packed, self.dst[0].packed, b'', seg_arr) != cs)
+            cs_wrong = (calc_checksum(self.src[0].packed, self.dst[0].packed, seg_arr) != cs)
         await self.send(ack_seg)
         del seg_arr
 

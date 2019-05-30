@@ -2,13 +2,13 @@ import itertools
 
 
 # Checksum is calculated in little endian order and converted via int.to_bytes at the end
-def calc_checksum(src_addr: bytes, dst_addr: bytes, tcp_head: bytes, tcp_payload: bytes) -> bytes:
+def calc_checksum(src_addr: bytes, dst_addr: bytes, *parts: bytes) -> bytes:
     # TCP Protocol Number: 6
     acc = (6 << 8)  # zero + PTCL/Next Header
 
     # IPv6 jumbograms are not supported!
     # This makes the IPv6 pseudo header calculation equal to the IPv4 case
-    tcp_length = len(tcp_head) + len(tcp_payload)
+    tcp_length = sum(len(p) for p in parts)
     if tcp_length > 0xffff:
         raise ValueError("Segment too long")
 
@@ -19,7 +19,7 @@ def calc_checksum(src_addr: bytes, dst_addr: bytes, tcp_head: bytes, tcp_payload
     acc += tcp_length
 
     # acc_iter returns the next 2 consecutive bytes, padding with 0
-    byte_chain = itertools.chain(src_addr, dst_addr, tcp_head, tcp_payload)
+    byte_chain = itertools.chain(src_addr, dst_addr, *parts)
     acc_iter = itertools.zip_longest(byte_chain, byte_chain, fillvalue=0)
     for high, low in acc_iter:
         acc += (low << 8) | high

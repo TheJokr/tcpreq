@@ -101,8 +101,7 @@ class Segment(object):
         check_old = data[16:18]
         data[16:18] = b"\x00\x00"
 
-        # calc_checksum doesn't differentiate between TCP header and payload
-        checksum = calc_checksum(src_addr, dst_addr, b'', data)
+        checksum = calc_checksum(src_addr, dst_addr, data)
         data[16:18] = check_old
         if checksum != check_old:
             raise ValueError("Checksum mismatch")
