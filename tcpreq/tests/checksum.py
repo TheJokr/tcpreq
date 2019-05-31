@@ -233,29 +233,12 @@ class ChecksumTest(BaseTest):
         # Send ACK with invalid checksum after SYN exchange
         # Establish connection
         cur_seq = (cur_seq + 2 * win) % 0x1_0000_000
-        syn_seg = Segment(self.src, self.dst, seq=cur_seq, window=512, syn=True)
-        await self.send(syn_seg)
-        del syn_seg
+        await self.send(Segment(self.src, self.dst, seq=cur_seq, window=512, syn=True))
 
-        # Simultaneous open is not supported (targets are listening hosts)
-        result = None
-        cur_seq = (cur_seq + 1) % 0x1_0000_0000
-        try:
-            # TODO: change timeout?
-            syn_res = await self.receive(timeout=30)
-        except asyncio.TimeoutError:
-            return TestResult(self, TEST_UNK, 3, "Timeout during handshake")
-        if syn_res.flags & 0x04 and syn_res.ack_seq == cur_seq:
-            return TestResult(self, TEST_UNK, 3, "RST in reply to SYN during handshake")
-        elif (syn_res.flags & 0x12) != 0x12:
-            result = TestResult(self, TEST_FAIL, 3, "Non-SYN-ACK in reply to SYN during handshake")
-        elif syn_res.ack_seq != cur_seq:
-            result = TestResult(self, TEST_FAIL, 3, "Wrong SEQ acked in reply to SYN during handshake")
-
-        if result is not None:
-            # Reset connection to be sure
-            await self.send(syn_res.make_reset(self.src[0], self.dst[0]))
-            return result
+        # TODO: change timeout?
+        syn_res = await self.synchronize(cur_seq, timeout=30, test_stage=3)
+        if isinstance(syn_res, TestResult):
+            return syn_res
 
         ack_seg = syn_res.make_reply(self.src[0], self.dst[0], window=512, ack=True)
 
