@@ -53,7 +53,8 @@ class ChecksumTest(BaseTest):
 
         result = await self._check_syn_resp(seq, test_stage=0)
         if result is not None:
-            result = TestResult(self, TEST_UNK, 0, result.reason + " (middlebox interference?)")  # type: ignore
+            result.status = TEST_UNK
+            result.reason += " (middlebox interference?)"  # type: ignore
 
         await asyncio.sleep(10, loop=self._loop)
         res_stat = 0
