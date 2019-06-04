@@ -1,13 +1,13 @@
-from typing import Awaitable, List, Tuple, Counter as CounterType, Optional
+from typing import Awaitable, List, Tuple, Optional
 import sys
 import time
-from collections import deque, Counter
 import random
 import asyncio
 
 from .base import BaseTest
 from .result import TestResult, TEST_PASS, TEST_UNK, TEST_FAIL
-from ..tcp import Segment, check_window, noop_option, end_of_options
+from .ttl_coding import encode_ttl, decode_ttl
+from ..tcp import Segment, check_window
 from ..tcp.checksum import calc_checksum
 
 
@@ -23,20 +23,12 @@ class ChecksumTest(BaseTest):
 
     # Test path for checksum modifiers
     async def _detect_interference(self) -> Optional[TestResult]:
-        src_addr = self.src[0].packed
-        dst_addr = self.dst[0].packed
         seq = random.randint(0, 0xffff_ffff)
         cs = random.randint(0, 0xffff).to_bytes(2, sys.byteorder)
-        opts = deque((end_of_options,))
         futs: List[Awaitable[None]] = []
 
         for ttl in range(1, self._HOP_LIMIT + 1):
-            # Encoding is similar to IPv4 header
-            enc_16 = (ttl << 11) | (ttl << 5) | ttl
-            enc_32 = (enc_16 << 16) | enc_16
-            opts.appendleft(noop_option)
-            syn_seg = Segment(self.src, self.dst, seq=seq, window=enc_16,
-                              ack_seq=enc_32, syn=True, up=enc_16, options=opts)
+            syn_seg = Segment(self.src, self.dst, seq=seq, syn=True, **encode_ttl(ttl))  # type: ignore
 
             seg_arr = bytearray(syn_seg._raw)
             if syn_seg.checksum == cs:
@@ -47,7 +39,7 @@ class ChecksumTest(BaseTest):
             syn_seg._raw = bytes(seg_arr)
 
             futs.append(self.send(syn_seg, ttl=ttl))
-        del src_addr, dst_addr, opts, syn_seg, seg_arr
+        del syn_seg, seg_arr
         await asyncio.wait(futs, loop=self._loop)
         del futs
 
@@ -79,7 +71,7 @@ class ChecksumTest(BaseTest):
             else:
                 res_stat = 1 + verified
 
-        # Clear queues (might contain challenge ACKs due to multiple SYNs reaching the target)
+        # Clear queues (might contain additional items due to multiple SYNs reaching the target)
         self.quote_queue.clear()
         self.recv_queue = asyncio.Queue(loop=self._loop)
 
@@ -97,23 +89,9 @@ class ChecksumTest(BaseTest):
             return None
 
         # Checksum is modified, but could still be wrong (incremental update)
-        ttl = 0
-        ttl_count: CounterType[int] = Counter()
-        ttl_guess = min(ttl_guess, self._HOP_LIMIT)
-
-        ack = int.from_bytes(quote[8:12], "big")
-        ttl_count.update((ack >> i) & 0x1f for i in (27, 21, 16, 11, 5, 0))
-
-        win = int.from_bytes(quote[14:16], "big")
-        ttl_count.update((win >> i) & 0x1f for i in (11, 5, 0))
-
         cs_vrfy = False
         if qlen >= 20:
-            up = int.from_bytes(quote[18:20], "big")
-            ttl_count.update((up >> i) & 0x1f for i in (11, 5, 0))
-
-            div = (quote[12] >> 4)
-            head_len = div * 4
+            head_len = (quote[12] >> 2) & 0b00111100
             if qlen >= head_len:
                 # Verify checksum if full header is included
                 seg = bytearray(quote)
@@ -123,57 +101,7 @@ class ChecksumTest(BaseTest):
                     # Checksum is still incorrect
                     return None
 
-                # Try to recover TTL from DO+options (see IPv4TestMultiplexer._recover_ttl)
-                if div > 5:
-                    div -= 6
-                    mod = None
-                    expected = 0x01
-                    for idx, opt in enumerate(quote[20:head_len]):
-                        if opt != expected:
-                            if mod is None and opt == 0x00:
-                                mod = idx % 4
-                                expected = 0x00
-                            else:
-                                mod = None
-                                break
-
-                    if mod is not None:
-                        ttl = 4 * div + mod
-
-        if ttl == 0:
-            # Get most likely TTL value from ttl_count. There are up to 12 entries.
-            # At least 4 votes (33%) are required to be selected. This means
-            # only the top 3 values can be eligible.
-            candidates = list(filter(lambda c: c[0] <= self._HOP_LIMIT and c[1] >= 4,
-                                     ttl_count.most_common(3)))
-            clen = len(candidates)
-
-            if clen == 1:
-                # Trivial case
-                ttl = candidates[0][0]
-            elif clen == 2:
-                diff = candidates[0][1] - candidates[1][1]
-                if diff >= 2 or candidates[0][0] == ttl_guess:
-                    ttl = candidates[0][0]
-                elif candidates[1][0] == ttl_guess:
-                    ttl = candidates[1][0]
-                elif diff > 0:
-                    ttl = candidates[0][0]
-                # else: evidence inconclusive
-            elif clen == 3:
-                # Must be a tie (4 * 3 == 12). Use window as tie breaker.
-                ttl_count.clear()
-                ttl_count.update((win >> i) & 0x1f for i in (11, 5, 0))
-                for v, _ in candidates:
-                    if ttl_count[v] >= 2:
-                        ttl = v
-                        break
-                # else: evidence inconclusive
-            else:  # clen == 0
-                # Fall back to lower layer guess
-                ttl = ttl_guess
-
-        return ttl, cs_vrfy
+        return decode_ttl(quote, ttl_guess, self._HOP_LIMIT), cs_vrfy
 
     async def receive_vrfyres(self, timeout: float) -> Optional[Segment]:
         while timeout > 0:
@@ -234,29 +162,12 @@ class ChecksumTest(BaseTest):
         # Send ACK with invalid checksum after SYN exchange
         # Establish connection
         cur_seq = (cur_seq + 2 * win) % 0x1_0000_000
-        syn_seg = Segment(self.src, self.dst, seq=cur_seq, window=512, syn=True)
-        await self.send(syn_seg)
-        del syn_seg
+        await self.send(Segment(self.src, self.dst, seq=cur_seq, window=512, syn=True))
 
-        # Simultaneous open is not supported (targets are listening hosts)
-        result = None
-        cur_seq = (cur_seq + 1) % 0x1_0000_0000
-        try:
-            # TODO: change timeout?
-            syn_res = await self.receive(timeout=30)
-        except asyncio.TimeoutError:
-            return TestResult(self, TEST_UNK, 3, "Timeout during handshake")
-        if syn_res.flags & 0x04 and syn_res.ack_seq == cur_seq:
-            return TestResult(self, TEST_UNK, 3, "RST in reply to SYN during handshake")
-        elif (syn_res.flags & 0x12) != 0x12:
-            result = TestResult(self, TEST_FAIL, 3, "Non-SYN-ACK in reply to SYN during handshake")
-        elif syn_res.ack_seq != cur_seq:
-            result = TestResult(self, TEST_FAIL, 3, "Wrong SEQ acked in reply to SYN during handshake")
-
-        if result is not None:
-            # Reset connection to be sure
-            await self.send(syn_res.make_reset(self.src[0], self.dst[0]))
-            return result
+        # TODO: change timeout?
+        syn_res = await self.synchronize(cur_seq, timeout=30, test_stage=3)
+        if isinstance(syn_res, TestResult):
+            return syn_res
 
         ack_seg = syn_res.make_reply(self.src[0], self.dst[0], window=512, ack=True)
 

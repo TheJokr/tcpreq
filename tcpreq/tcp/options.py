@@ -52,7 +52,7 @@ class SizedOption(BaseOption):
     __slots__ = ()
 
     def __init__(self, kind: int, payload: bytes) -> None:
-        opt_head = bytes((kind, len(payload)))
+        opt_head = bytes((kind, 2 + len(payload)))
         super(SizedOption, self).__init__(opt_head + payload)
 
     @classmethod

@@ -4,7 +4,7 @@ import time
 import math
 import asyncio
 
-from .result import TestResult
+from .result import TestResult, TEST_UNK, TEST_FAIL
 from ..types import IPAddressType
 from ..tcp import Segment
 
@@ -54,6 +54,29 @@ class BaseTest(Generic[IPAddressType]):
                 pass
 
         raise asyncio.TimeoutError()
+
+    async def synchronize(self, sent_seq: int, timeout: float,
+                          test_stage: int) -> Union[Segment, TestResult]:
+        # Simultaneous open is not supported (targets are listening hosts)
+        exp_ack = (sent_seq + 1) % 0x1_0000_0000
+        try:
+            syn_res = await self.receive(timeout=timeout)
+        except asyncio.TimeoutError:
+            return TestResult(self, TEST_UNK, test_stage, "Timeout during handshake")
+        if syn_res.flags & 0x04 and syn_res.ack_seq == exp_ack:
+            return TestResult(self, TEST_UNK, test_stage, "RST in reply to SYN during handshake")
+        elif (syn_res.flags & 0x12) != 0x12:
+            result = TestResult(self, TEST_FAIL, test_stage,
+                                "Non-SYN-ACK in reply to SYN during handshake")
+        elif syn_res.ack_seq != exp_ack:
+            result = TestResult(self, TEST_FAIL, test_stage,
+                                "Wrong SEQ acked in reply to SYN during handshake")
+        else:
+            return syn_res
+
+        # Reset connection to be sure
+        await self.send(syn_res.make_reset(self.src[0], self.dst[0]))
+        return result
 
     @abstractmethod
     async def run(self) -> TestResult:

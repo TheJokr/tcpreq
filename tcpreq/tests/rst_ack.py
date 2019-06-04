@@ -12,28 +12,12 @@ class RSTACKTest(BaseTest):
 
     async def run(self) -> TestResult:
         cur_seq = random.randint(0, 0xffff_ffff)
-        syn_seg = Segment(self.src, self.dst, seq=cur_seq, window=1024, syn=True)
-        await self.send(syn_seg)
-        del syn_seg
+        await self.send(Segment(self.src, self.dst, seq=cur_seq, window=1024, syn=True))
 
-        result = None
-        cur_seq = (cur_seq + 1) % 0x1_0000_0000
-        try:
-            # TODO: change timeout?
-            syn_res = await self.receive(timeout=30)
-        except asyncio.TimeoutError:
-            return TestResult(self, TEST_UNK, 1, "Timeout during handshake")
-        if syn_res.flags & 0x04 and syn_res.ack_seq == cur_seq:
-            return TestResult(self, TEST_UNK, 1, "RST in reply to SYN during handshake")
-        elif (syn_res.flags & 0x12) != 0x12:
-            result = TestResult(self, TEST_FAIL, 1, "Non-SYN-ACK in reply to SYN during handshake")
-        elif syn_res.ack_seq != cur_seq:
-            result = TestResult(self, TEST_FAIL, 1, "Wrong SEQ acked in reply to SYN during handshake")
-
-        if result is not None:
-            # Reset connection to be sure
-            await self.send(syn_res.make_reset(self.src[0], self.dst[0]))
-            return result
+        # TODO: change timeout?
+        syn_res = await self.synchronize(cur_seq, timeout=30, test_stage=1)
+        if isinstance(syn_res, TestResult):
+            return syn_res
 
         rstack_seg = syn_res.make_reply(self.src[0], self.dst[0], window=0, seq=-1, ack=True, rst=True)
         await self.send(rstack_seg)
