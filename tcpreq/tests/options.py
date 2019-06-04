@@ -105,7 +105,28 @@ class UnknownOptionTest(BaseTest):
     __slots__ = ()
 
     async def run(self) -> TestResult:
+        # Test responsiveness without any options
         cur_seq = random.randint(0, 0xffff_ffff)
+        await self.send(Segment(self.src, self.dst, seq=cur_seq, window=1024, syn=True))
+
+        # TODO: change timeout?
+        syn_res = await self.synchronize(cur_seq, timeout=30, test_stage=1)
+        if isinstance(syn_res, TestResult):
+            return syn_res
+
+        await self.send(syn_res.make_reset(self.src[0], self.dst[0]))
+        del syn_res
+
+        self.recv_queue = asyncio.Queue(loop=self._loop)
+        await asyncio.sleep(10, loop=self._loop)
+        if not self.recv_queue.empty():
+            # TODO: retransmit RST?
+            return TestResult(self, TEST_UNK, 1, "RST ignored")
+
+        # Test whether unknown option is ignored
+        # Option kind 158 is currently reserved
+        # See https://www.iana.org/assignments/tcp-parameters/tcp-parameters.xhtml
+        cur_seq = (cur_seq + 2048) % 0x1_0000_000
         opts = (self._UNK_OPT,)
         futs: List[Awaitable[None]] = []
         for ttl in range(1, self._HOP_LIMIT + 1):
@@ -119,8 +140,10 @@ class UnknownOptionTest(BaseTest):
         del futs
 
         # TODO: change timeout?
-        syn_res = await self.synchronize(cur_seq, timeout=30, test_stage=1)
+        syn_res = await self.synchronize(cur_seq, timeout=30, test_stage=2)
         if isinstance(syn_res, TestResult):
+            syn_res.status = TEST_FAIL
+            syn_res.reason += " with unknown option"  # type: ignore
             return syn_res
 
         await asyncio.sleep(10, loop=self._loop)
