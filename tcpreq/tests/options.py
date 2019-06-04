@@ -1,4 +1,4 @@
-from typing import Awaitable, List, Optional
+from typing import ClassVar, Awaitable, List, Optional
 import random
 import asyncio
 
@@ -6,7 +6,7 @@ from .base import BaseTest
 from .result import TestResult, TEST_PASS, TEST_UNK, TEST_FAIL
 from .ttl_coding import encode_ttl, decode_ttl
 from ..tcp import Segment, noop_option, end_of_options
-from ..tcp.options import BaseOption, SizedOption
+from ..tcp.options import BaseOption, SizedOption, parse_options
 
 
 class OptionSupportTest(BaseTest):
@@ -63,7 +63,7 @@ class OptionSupportTest(BaseTest):
 
             reason = "Middlebox interference detected"
             reason += " at or before hop {0}" if mbox_hop > 0 else " at unknown hop"
-            reason += " (header options modified)"
+            reason += " (header option(s) deleted)"
             result = TestResult(self, TEST_UNK, 2, reason.format(mbox_hop))
 
             if mbox_hop > 0:
@@ -86,22 +86,27 @@ class OptionSupportTest(BaseTest):
             # Header options not included in quote
             return None
 
-        # TODO: allow modifications as long as noop and eool are included?
-        if head_len == 24 and quote[20:24] == b"\x01\x01\x00\x00":
-            return None
+        opts = bytearray(quote[20:head_len])
+        try:
+            if {noop_option, end_of_options}.issubset(parse_options(opts)):
+                return None
+        except ValueError:
+            pass
 
         return decode_ttl(quote, ttl_guess, self._HOP_LIMIT, win=True, ack=True, up=True, opts=False)
 
 
 class UnknownOptionTest(BaseTest):
     """Test whether unknown options are ignored silently."""
+    # Option kind 158 is currently reserved
+    # See https://www.iana.org/assignments/tcp-parameters/tcp-parameters.xhtml
+    _UNK_OPT: ClassVar[SizedOption] = SizedOption(158, b"\x58\xfa\x89")
+
     __slots__ = ()
 
     async def run(self) -> TestResult:
-        # Option kind 158 is currently reserved
-        # See https://www.iana.org/assignments/tcp-parameters/tcp-parameters.xhtml
         cur_seq = random.randint(0, 0xffff_ffff)
-        opts = (SizedOption(158, b"\x58\xfa\x89"),)
+        opts = (self._UNK_OPT,)
         futs: List[Awaitable[None]] = []
         for ttl in range(1, self._HOP_LIMIT + 1):
             futs.append(self.send(
@@ -128,7 +133,7 @@ class UnknownOptionTest(BaseTest):
 
             reason = "Middlebox interference detected"
             reason += " at or before hop {0}" if mbox_hop > 0 else " at unknown hop"
-            reason += " (header options modified)"
+            reason += " (unknown header option deleted)"
             result = TestResult(self, TEST_UNK, 2, reason.format(mbox_hop))
 
             if mbox_hop > 0:
@@ -151,22 +156,27 @@ class UnknownOptionTest(BaseTest):
             # Header options not included in quote
             return None
 
-        # TODO: allow modifications as long as unknown option is included?
-        if head_len == 28 and quote[20:28] == b"\x9e\x03\x58\xfa\x89\x00\x00\x00":
-            return None
+        opts = bytearray(quote[20:head_len])
+        try:
+            if self._UNK_OPT in parse_options(opts):
+                return None
+        except ValueError:
+            pass
 
         return decode_ttl(quote, ttl_guess, self._HOP_LIMIT, win=True, ack=True, up=True, opts=False)
 
 
 class IllegalLengthOptionTest(BaseTest):
     """Verify responsiveness after sending an option with illegal length."""
+    # Option kind 2 is assigned to MSS
+    # See https://www.iana.org/assignments/tcp-parameters/tcp-parameters.xhtml
+    _ILLEGAL_OPT: ClassVar[BaseOption] = BaseOption(b"\x02\x00\x02\xf1")
+
     __slots__ = ()
 
     async def run(self) -> TestResult:
-        # Option kind 2 is assigned to MSS
-        # See https://www.iana.org/assignments/tcp-parameters/tcp-parameters.xhtml
         cur_seq = random.randint(0, 0xffff_ffff)
-        opts = (BaseOption(b"\x02\x00\x01\x01"),)
+        opts = (self._ILLEGAL_OPT,)
         futs: List[Awaitable[None]] = []
         for ttl in range(1, self._HOP_LIMIT + 1):
             futs.append(self.send(
@@ -209,7 +219,7 @@ class IllegalLengthOptionTest(BaseTest):
 
             reason = "Middlebox interference detected"
             reason += " at or before hop {0}" if mbox_hop > 0 else " at unknown hop"
-            reason += " (header options modified)"
+            reason += " (illegal header option deleted)"
             result = TestResult(self, TEST_UNK, 1, reason.format(mbox_hop))
 
             if mbox_hop > 0:
@@ -259,8 +269,13 @@ class IllegalLengthOptionTest(BaseTest):
             # Header options not included in quote
             return None
 
-        # TODO: allow modifications as long as illegal option is included?
-        if head_len == 24 and quote[20:24] == b"\x02\x00\x01\x01":
-            return None
+        opts = bytearray(quote[20:head_len])
+        try:
+            for _ in parse_options(opts):
+                pass
+        except ValueError:
+            # parse_options should fail on parsing _ILLEGAL_OPT
+            if opts[:4] == bytes(self._ILLEGAL_OPT):
+                return None
 
         return decode_ttl(quote, ttl_guess, self._HOP_LIMIT, win=True, ack=True, up=True, opts=False)
