@@ -26,6 +26,7 @@ class OptionSupportTest(BaseTest):
         await self.send(syn_res.make_reset(self.src[0], self.dst[0]))
         del syn_res
 
+        await asyncio.sleep(10, loop=self._loop)
         self.recv_queue = asyncio.Queue(loop=self._loop)
         await asyncio.sleep(10, loop=self._loop)
         if not self.recv_queue.empty():
@@ -56,7 +57,7 @@ class OptionSupportTest(BaseTest):
         await asyncio.sleep(10, loop=self._loop)
         result = TestResult(self, TEST_PASS)
         res_stat = 0
-        hops = filter(None, (self._check_quote(*item) for item in self.quote_queue))
+        hops = (i for i in (self._check_quote(*item) for item in self.quote_queue) if i is not None)
         for mbox_hop in hops:
             if mbox_hop == 0 and res_stat >= 1:
                 continue
@@ -117,6 +118,7 @@ class UnknownOptionTest(BaseTest):
         await self.send(syn_res.make_reset(self.src[0], self.dst[0]))
         del syn_res
 
+        await asyncio.sleep(10, loop=self._loop)
         self.recv_queue = asyncio.Queue(loop=self._loop)
         await asyncio.sleep(10, loop=self._loop)
         if not self.recv_queue.empty():
@@ -149,7 +151,7 @@ class UnknownOptionTest(BaseTest):
         await asyncio.sleep(10, loop=self._loop)
         result = TestResult(self, TEST_PASS)
         res_stat = 0
-        hops = filter(None, (self._check_quote(*item) for item in self.quote_queue))
+        hops = (i for i in (self._check_quote(*item) for item in self.quote_queue) if i is not None)
         for mbox_hop in hops:
             if mbox_hop == 0 and res_stat >= 1:
                 continue
@@ -235,7 +237,7 @@ class IllegalLengthOptionTest(BaseTest):
 
         await asyncio.sleep(10, loop=self._loop)
         res_stat = 0
-        hops = filter(None, (self._check_quote(*item) for item in self.quote_queue))
+        hops = (i for i in (self._check_quote(*item) for item in self.quote_queue) if i is not None)
         for mbox_hop in hops:
             if mbox_hop == 0 and res_stat >= 1:
                 continue
@@ -252,8 +254,11 @@ class IllegalLengthOptionTest(BaseTest):
         del res_stat, hops
 
         if result is not None:
-            if result.status is TEST_PASS and not (syn_res.flags & 0x04):
-                await self.send(syn_res.make_reset(self.src[0], self.dst[0]))
+            try:
+                if not (syn_res.flags & 0x04):
+                    await self.send(syn_res.make_reset(self.src[0], self.dst[0]))
+            except NameError:
+                pass
             return result
 
         # No response to SYN with illegal option length and no modifications along the path
