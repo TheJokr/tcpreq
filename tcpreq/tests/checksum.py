@@ -165,7 +165,7 @@ class ChecksumTest(BaseTest):
         await self.send(Segment(self.src, self.dst, seq=cur_seq, window=512, syn=True))
 
         # TODO: change timeout?
-        syn_res = await self.synchronize(cur_seq, timeout=30, test_stage=3)
+        syn_res = await self._synchronize(cur_seq, timeout=30, test_stage=3)
         if isinstance(syn_res, TestResult):
             return syn_res
 

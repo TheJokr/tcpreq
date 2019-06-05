@@ -55,8 +55,8 @@ class BaseTest(Generic[IPAddressType]):
 
         raise asyncio.TimeoutError()
 
-    async def synchronize(self, sent_seq: int, timeout: float,
-                          test_stage: int) -> Union[Segment, TestResult]:
+    async def _synchronize(self, sent_seq: int, timeout: float,
+                           test_stage: int) -> Union[Segment, TestResult]:
         # Simultaneous open is not supported (targets are listening hosts)
         exp_ack = (sent_seq + 1) % 0x1_0000_0000
         try:

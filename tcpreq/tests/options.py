@@ -19,7 +19,7 @@ class OptionSupportTest(BaseTest):
         await self.send(Segment(self.src, self.dst, seq=cur_seq, window=1024, syn=True))
 
         # TODO: change timeout?
-        syn_res = await self.synchronize(cur_seq, timeout=30, test_stage=1)
+        syn_res = await self._synchronize(cur_seq, timeout=30, test_stage=1)
         if isinstance(syn_res, TestResult):
             return syn_res
 
@@ -48,7 +48,7 @@ class OptionSupportTest(BaseTest):
         del futs
 
         # TODO: change timeout?
-        syn_res = await self.synchronize(cur_seq, timeout=30, test_stage=2)
+        syn_res = await self._synchronize(cur_seq, timeout=30, test_stage=2)
         if isinstance(syn_res, TestResult):
             syn_res.status = TEST_FAIL
             syn_res.reason += " with options"  # type: ignore
@@ -111,7 +111,7 @@ class UnknownOptionTest(BaseTest):
         await self.send(Segment(self.src, self.dst, seq=cur_seq, window=1024, syn=True))
 
         # TODO: change timeout?
-        syn_res = await self.synchronize(cur_seq, timeout=30, test_stage=1)
+        syn_res = await self._synchronize(cur_seq, timeout=30, test_stage=1)
         if isinstance(syn_res, TestResult):
             return syn_res
 
@@ -142,7 +142,7 @@ class UnknownOptionTest(BaseTest):
         del futs
 
         # TODO: change timeout?
-        syn_res = await self.synchronize(cur_seq, timeout=30, test_stage=2)
+        syn_res = await self._synchronize(cur_seq, timeout=30, test_stage=2)
         if isinstance(syn_res, TestResult):
             syn_res.status = TEST_FAIL
             syn_res.reason += " with unknown option"  # type: ignore
