@@ -5,7 +5,7 @@ import math
 import asyncio
 
 from .result import TestResult, TEST_UNK, TEST_FAIL
-from ..types import IPAddressType
+from ..types import IPAddressType, ScanHost
 from ..tcp import Segment
 
 
@@ -20,13 +20,13 @@ class BaseTest(Generic[IPAddressType]):
 
     __slots__ = ("src", "dst", "recv_queue", "quote_queue", "send_queue", "_loop")
 
-    def __init__(self, src: Tuple[IPAddressType, int], dst: Tuple[IPAddressType, int],
+    def __init__(self, src: ScanHost[IPAddressType], dst: ScanHost[IPAddressType],
                  loop: asyncio.AbstractEventLoop = None) -> None:
         if loop is None:
             loop = asyncio.get_event_loop()
 
-        self.src: Tuple[IPAddressType, int] = src
-        self.dst: Tuple[IPAddressType, int] = dst
+        self.src: ScanHost[IPAddressType] = src
+        self.dst: ScanHost[IPAddressType] = dst
         self.recv_queue: "asyncio.Queue[bytearray]" = asyncio.Queue(loop=loop)
         self.quote_queue: List[Tuple[bytes, int, bytes]] = []
         self.send_queue: Optional["asyncio.Queue[Union[Tuple[Segment, IPAddressType],"
@@ -36,10 +36,10 @@ class BaseTest(Generic[IPAddressType]):
     def send(self, seg: Segment, ttl: int = None) -> Awaitable[None]:
         assert self.send_queue is not None, "Test is not registered with any multiplexer"
         if ttl is None:
-            return self.send_queue.put((seg, self.dst[0]))
+            return self.send_queue.put((seg, self.dst.ip))
 
         assert 1 <= ttl <= self._HOP_LIMIT
-        return self.send_queue.put((seg, self.dst[0], ttl))
+        return self.send_queue.put((seg, self.dst.ip, ttl))
 
     async def receive(self, timeout: float) -> Segment:
         while timeout > 0:
@@ -48,7 +48,7 @@ class BaseTest(Generic[IPAddressType]):
             timeout -= (time.monotonic() - start)
 
             try:
-                return Segment.from_bytes(self.dst[0].packed, self.src[0].packed, data)
+                return Segment.from_bytes(self.dst.ip.packed, self.src.ip.packed, data)
             except ValueError:
                 # Discard invalid segments silently and retry
                 pass
@@ -75,7 +75,7 @@ class BaseTest(Generic[IPAddressType]):
             return syn_res
 
         # Reset connection to be sure
-        await self.send(syn_res.make_reset(self.src[0], self.dst[0]))
+        await self.send(syn_res.make_reset(self.src, self.dst))
         return result
 
     @abstractmethod

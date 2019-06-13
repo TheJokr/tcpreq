@@ -4,7 +4,7 @@ import math
 
 from .options import BaseOption, parse_options
 from .checksum import calc_checksum
-from ..types import IPAddressType
+from ..types import IPAddressType, ScanHost
 
 
 # Segments are immutable
@@ -16,7 +16,7 @@ class Segment(object):
     __slots__ = ("_head_len", "_raw", "_options")
 
     # src, dst are (addr: IPAddressType, port: int) tuples. flags int takes precedence over bools.
-    def __init__(self, src: Tuple[IPAddressType, int], dst: Tuple[IPAddressType, int],
+    def __init__(self, src: ScanHost[IPAddressType], dst: ScanHost[IPAddressType],
                  seq: int, window: int, ack_seq: int = 0, cwr: bool = False, ece: bool = False,
                  urg: bool = False, ack: bool = False, psh: bool = False, rst: bool = False,
                  syn: bool = False, fin: bool = False, flags: int = None, up: int = 0,
@@ -34,7 +34,7 @@ class Segment(object):
         self._head_len = head_rows * 4
         head = bytearray(self._head_len)
         try:
-            self._TCP_HEAD.pack_into(head, 0, src[1], dst[1], seq, ack_seq,
+            self._TCP_HEAD.pack_into(head, 0, src.port, dst.port, seq, ack_seq,
                                      doff_rsrvd, flags, window, 0, up)
         except struct.error as e:
             raise OverflowError(str(e)) from e
@@ -42,13 +42,13 @@ class Segment(object):
             head[20:20 + opt_len] = b''.join(map(bytes, options))
 
         # Checksum field is explicitly set to zero in _TCP_HEAD.pack_into call
-        head[16:18] = calc_checksum(src[0].packed, dst[0].packed, head, payload)
+        head[16:18] = calc_checksum(src.ip.packed, dst.ip.packed, head, payload)
 
         self._raw = bytes(head) + payload
         self._options = tuple(options)
 
     # Negative seq is used as fallback if ACK is not set (see below)
-    def make_reply(self, src_addr: IPAddressType, dst_addr: IPAddressType, window: int,
+    def make_reply(self, src: ScanHost[IPAddressType], dst: ScanHost[IPAddressType], window: int,
                    seq: int = None, ack_seq: int = None, cwr: bool = False, ece: bool = False,
                    urg: bool = False, ack: bool = False, psh: bool = False, rst: bool = False,
                    syn: bool = False, fin: bool = False, flags: int = None, up: int = 0,
@@ -67,12 +67,10 @@ class Segment(object):
             payload_len = len(self) - self._head_len
             ack_seq = (self.seq + payload_len + syn_fin) % 0x1_0000_0000  # == 2^32
 
-        src = (src_addr, self.dst_port)
-        dst = (dst_addr, self.src_port)
         return Segment(src, dst, seq, window, ack_seq, cwr, ece, urg, ack,
                        psh, rst, syn, fin, flags, up, options, payload)
 
-    def make_reset(self, src_addr: IPAddressType, dst_addr: IPAddressType) -> "Segment":
+    def make_reset(self, src: ScanHost[IPAddressType], dst: ScanHost[IPAddressType]) -> "Segment":
         # Per RFC 793bis, section 3.4, "Reset Generation", 1. and 2.
         has_ack = self.flags & 0x10
         if has_ack:
@@ -82,8 +80,7 @@ class Segment(object):
             seq = 0
             ack_seq = None
 
-        return self.make_reply(src_addr, dst_addr, seq=seq, window=0,
-                               ack_seq=ack_seq, ack=not has_ack, rst=True)
+        return self.make_reply(src, dst, seq=seq, window=0, ack_seq=ack_seq, ack=not has_ack, rst=True)
 
     @classmethod
     def from_bytes(cls, src_addr: bytes, dst_addr: bytes, data: bytearray) -> "Segment":

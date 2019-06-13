@@ -3,10 +3,11 @@ import asyncio
 
 from .base import BaseTest
 from .result import TestResult, TEST_PASS, TEST_UNK, TEST_FAIL
+from ..types import IPAddressType
 from ..tcp import Segment
 
 
-class RSTACKTest(BaseTest):
+class RSTACKTest(BaseTest[IPAddressType]):
     """Test response to resets with the ACK flag set."""
     __slots__ = ()
 
@@ -19,7 +20,7 @@ class RSTACKTest(BaseTest):
         if isinstance(syn_res, TestResult):
             return syn_res
 
-        rstack_seg = syn_res.make_reply(self.src[0], self.dst[0], window=0, seq=-1, ack=True, rst=True)
+        rstack_seg = syn_res.make_reply(self.src, self.dst, window=0, seq=-1, ack=True, rst=True)
         await self.send(rstack_seg)
 
         try:
@@ -31,5 +32,5 @@ class RSTACKTest(BaseTest):
             return TestResult(self, TEST_PASS)
 
         # RST-ACK ignored; send non-ACK RST
-        await self.send(syn_res.make_reset(self.src[0], self.dst[0]))
+        await self.send(syn_res.make_reset(self.src, self.dst))
         return TestResult(self, TEST_FAIL, 1, "RST-ACK ignored")

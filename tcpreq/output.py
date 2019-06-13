@@ -1,11 +1,10 @@
-from typing import Type, Callable, Iterable, Dict, Tuple, TextIO, Optional
+from typing import Type, Callable, Iterable, Dict, TextIO, Optional
 from abc import ABCMeta, abstractmethod
 import os
 import time
 import json
 import asyncio
 
-from .types import AnyIPAddress
 from .tests import TestResult
 
 
@@ -16,8 +15,7 @@ class _BaseOutput(metaclass=ABCMeta):
         self._stream = stream
 
     @abstractmethod
-    def __call__(self, test_name: str, targets: Iterable[Tuple[AnyIPAddress, int]],
-                 futures: Iterable["asyncio.Future[TestResult]"]) -> None:
+    def __call__(self, test_name: str, futures: Iterable["asyncio.Future[TestResult]"]) -> None:
         pass
 
 
@@ -26,13 +24,13 @@ class _JSONLinesOutput(_BaseOutput):
 
     __slots__ = ()
 
-    def __call__(self, test_name: str, targets: Iterable[Tuple[AnyIPAddress, int]],
-                 futures: Iterable["asyncio.Future[TestResult]"]) -> None:
-        for tgt, f in zip(targets, futures):
-            o: Dict = {"test": test_name, "timestamp": None, "custom": None,
-                       "src": {"ip": None, "port": None}, "dst": {"ip": str(tgt[0]), "port": tgt[1]},
-                       "status": None, "stage": None, "reason": None}
+    def __call__(self, test_name: str, futures: Iterable["asyncio.Future[TestResult]"]) -> None:
+        tmpl: Dict = {"ip": None, "port": None, "host": None}
+        tmpl = {"test": test_name, "timestamp": None, "src": tmpl, "dst": tmpl,
+                "status": None, "stage": None, "reason": None, "custom": None}
 
+        for f in futures:
+            o = tmpl.copy()
             try:
                 res = f.result()
             except asyncio.InvalidStateError as e:
@@ -45,8 +43,8 @@ class _JSONLinesOutput(_BaseOutput):
                 o["reason"] = str(e)
             else:
                 o["timestamp"] = time.strftime(self._TS_FMT, time.gmtime(res.time))
-                o["src"]["ip"] = str(res.src[0])
-                o["src"]["port"] = res.src[1]
+                o["src"] = res.src.raw
+                o["dst"] = res.dst.raw
                 o["status"] = res.status.name
                 o["stage"] = res.stage
                 o["reason"] = res.reason
@@ -57,11 +55,9 @@ class _JSONLinesOutput(_BaseOutput):
         self._stream.flush()
 
 
-def _print_results(test_name: str, targets: Iterable[Tuple[AnyIPAddress, int]],
-                   futures: Iterable["asyncio.Future[TestResult]"]) -> None:
+def _print_results(test_name: str, futures: Iterable["asyncio.Future[TestResult]"]) -> None:
     print(test_name, "results:")
-    for tgt, f in zip(targets, futures):
-        out = "{0[0]}\t{0[1]}\t".format(tgt)
+    for f in futures:
         try:
             res = f.result()
         except asyncio.InvalidStateError as e:
@@ -69,8 +65,9 @@ def _print_results(test_name: str, targets: Iterable[Tuple[AnyIPAddress, int]],
         except asyncio.CancelledError:
             continue
         except Exception as e:
-            print(out + "ERR: " + str(e))
+            print("ERR:", e)
         else:
+            out = "{0.ip}\t{0.port}\t".format(res.dst)
             if res.stage is not None:
                 out += "Stage {}\t".format(res.stage)
             out += res.status.name
@@ -86,8 +83,7 @@ _OUTPUT_TBL: Dict[str, Type[_BaseOutput]] = {
 }
 
 
-def get_output_module(stream: Optional[TextIO]) -> Callable[[str, Iterable[Tuple[AnyIPAddress, int]],
-                                                            Iterable["asyncio.Future[TestResult]"]], None]:
+def get_output_module(stream: Optional[TextIO]) -> Callable[[str, Iterable["asyncio.Future[TestResult]"]], None]:
     if stream is None:
         return _print_results
 

@@ -6,12 +6,13 @@ from ipaddress import IPv4Address
 from .base import BaseTest
 from .result import TestResult, TEST_PASS, TEST_UNK, TEST_FAIL
 from .ttl_coding import encode_ttl, decode_ttl
+from ..types import IPAddressType
 from ..tcp import Segment, MSSOption
 from ..tcp.options import parse_options
 from ..alp import PORT_MAP as ALP_MAP
 
 
-class MSSSupportTest(BaseTest):
+class MSSSupportTest(BaseTest[IPAddressType]):
     """Verify support for the MSS option."""
     # See "Measuring the Evolution of Transport Protocols in the Internet"
     # for measurements on minimum accepted MSS values
@@ -20,8 +21,8 @@ class MSSSupportTest(BaseTest):
     __slots__ = ()
 
     async def run(self) -> TestResult:
-        if self.dst[1] not in ALP_MAP:
-            return TestResult(self, TEST_UNK, 0, "Missing ALP module for port {}".format(self.dst[1]))
+        if self.dst.port not in ALP_MAP:
+            return TestResult(self, TEST_UNK, 0, "Missing ALP module for port {}".format(self.dst.port))
 
         cur_seq = random.randint(0, 0xffff_ffff)
         opts = (self._MSS_OPT,)
@@ -64,7 +65,7 @@ class MSSSupportTest(BaseTest):
         del res_stat, hops
 
         if result is not None:
-            await self.send(syn_res.make_reset(self.src[0], self.dst[0]))
+            await self.send(syn_res.make_reset(self.src, self.dst))
             return result
 
         # Clear queues (might contain additional items due to multiple SYNs reaching the target)
@@ -72,13 +73,13 @@ class MSSSupportTest(BaseTest):
         self.recv_queue = asyncio.Queue(loop=self._loop)
 
         # TODO: multiple flights?
-        alp = ALP_MAP[self.dst[1]](self.src, self.dst)
+        alp = ALP_MAP[self.dst.port](self.src, self.dst)
         req = alp.pull_data(256)
         if req is None:
-            await self.send(syn_res.make_reset(self.src[0], self.dst[0]))
+            await self.send(syn_res.make_reset(self.src, self.dst))
             return TestResult(self, TEST_UNK, 1, "No ALP data available")
 
-        await self.send(syn_res.make_reply(self.src[0], self.dst[0], window=0xffff, ack=True, payload=req))
+        await self.send(syn_res.make_reply(self.src, self.dst, window=0xffff, ack=True, payload=req))
         del req
 
         # Check received segment sizes
@@ -87,7 +88,7 @@ class MSSSupportTest(BaseTest):
         await asyncio.sleep(30, loop=self._loop)
         while True:
             try:
-                seg = Segment.from_bytes(self.dst[0].packed, self.src[0].packed,
+                seg = Segment.from_bytes(self.dst.ip.packed, self.src.ip.packed,
                                          self.recv_queue.get_nowait())
             except asyncio.QueueEmpty:
                 break
@@ -99,7 +100,7 @@ class MSSSupportTest(BaseTest):
                     result = TestResult(self, TEST_FAIL, 1, "Segment too large")
                     break
 
-        await self.send(seg.make_reset(self.src[0], self.dst[0]))
+        await self.send(seg.make_reset(self.src, self.dst))
         return result
 
     def _check_quote(self, src_addr: bytes, ttl_guess: int, quote: bytes) -> Optional[int]:
@@ -129,16 +130,16 @@ class MSSSupportTest(BaseTest):
                 decode_ttl(quote, ttl_guess, self._HOP_LIMIT, win=False, ack=True, up=True, opts=False))
 
 
-class MissingMSSTest(BaseTest):
+class MissingMSSTest(BaseTest[IPAddressType]):
     """Check fallback MSS value for validity."""
     __slots__ = ()
 
     async def run(self) -> TestResult:
-        if self.dst[1] not in ALP_MAP:
-            return TestResult(self, TEST_UNK, 0, "Missing ALP module for port {}".format(self.dst[1]))
+        if self.dst.port not in ALP_MAP:
+            return TestResult(self, TEST_UNK, 0, "Missing ALP module for port {}".format(self.dst.port))
 
         # Defaults defined in RFC 793bis
-        if isinstance(self.dst[0], IPv4Address):
+        if isinstance(self.dst.ip, IPv4Address):
             seg_max_len = 536 + 20
         else:
             seg_max_len = 1220 + 20
@@ -182,7 +183,7 @@ class MissingMSSTest(BaseTest):
         del res_stat, hops
 
         if result is not None:
-            await self.send(syn_res.make_reset(self.src[0], self.dst[0]))
+            await self.send(syn_res.make_reset(self.src, self.dst))
             return result
 
         # Clear queues (might contain additional items due to multiple SYNs reaching the target)
@@ -190,13 +191,13 @@ class MissingMSSTest(BaseTest):
         self.recv_queue = asyncio.Queue(loop=self._loop)
 
         # TODO: multiple flights?
-        alp = ALP_MAP[self.dst[1]](self.src, self.dst)
+        alp = ALP_MAP[self.dst.port](self.src, self.dst)
         req = alp.pull_data(seg_max_len)
         if req is None:
-            await self.send(syn_res.make_reset(self.src[0], self.dst[0]))
+            await self.send(syn_res.make_reset(self.src, self.dst))
             return TestResult(self, TEST_UNK, 1, "No ALP data available")
 
-        await self.send(syn_res.make_reply(self.src[0], self.dst[0], window=0xffff, ack=True, payload=req))
+        await self.send(syn_res.make_reply(self.src, self.dst, window=0xffff, ack=True, payload=req))
         del req
 
         # Check received segment sizes
@@ -205,7 +206,7 @@ class MissingMSSTest(BaseTest):
         await asyncio.sleep(30, loop=self._loop)
         while True:
             try:
-                seg = Segment.from_bytes(self.dst[0].packed, self.src[0].packed,
+                seg = Segment.from_bytes(self.dst.ip.packed, self.src.ip.packed,
                                          self.recv_queue.get_nowait())
             except asyncio.QueueEmpty:
                 break
@@ -217,7 +218,7 @@ class MissingMSSTest(BaseTest):
                     result = TestResult(self, TEST_FAIL, 1, "Segment too large")
                     break
 
-        await self.send(seg.make_reset(self.src[0], self.dst[0]))
+        await self.send(seg.make_reset(self.src, self.dst))
         return result
 
     def _check_quote(self, src_addr: bytes, ttl_guess: int, quote: bytes) -> Optional[int]:
@@ -243,13 +244,13 @@ class MissingMSSTest(BaseTest):
 
 # Derive from MSSSupportTest to avoid duplicating _check_quote
 # TODO: Factor common part into base class for both MSSSupportTest and LateOptionTest
-class LateOptionTest(MSSSupportTest):
+class LateOptionTest(MSSSupportTest[IPAddressType]):
     """Test response to MSS option delivered after the 3WH."""
     __slots__ = ()
 
     async def run(self) -> TestResult:
-        if self.dst[1] not in ALP_MAP:
-            return TestResult(self, TEST_UNK, 0, "Missing ALP module for port {}".format(self.dst[1]))
+        if self.dst.port not in ALP_MAP:
+            return TestResult(self, TEST_UNK, 0, "Missing ALP module for port {}".format(self.dst.port))
 
         cur_seq = random.randint(0, 0xffff_ffff)
         opts = (self._MSS_OPT,)
@@ -292,7 +293,7 @@ class LateOptionTest(MSSSupportTest):
         del res_stat, hops
 
         if result is not None:
-            await self.send(syn_res.make_reset(self.src[0], self.dst[0]))
+            await self.send(syn_res.make_reset(self.src, self.dst))
             return result
 
         # Clear queues (might contain additional items due to multiple SYNs reaching the target)
@@ -300,14 +301,14 @@ class LateOptionTest(MSSSupportTest):
         self.recv_queue = asyncio.Queue(loop=self._loop)
 
         # TODO: multiple flights?
-        alp = ALP_MAP[self.dst[1]](self.src, self.dst)
+        alp = ALP_MAP[self.dst.port](self.src, self.dst)
         req = alp.pull_data(256)
         if req is None:
-            await self.send(syn_res.make_reset(self.src[0], self.dst[0]))
+            await self.send(syn_res.make_reset(self.src, self.dst))
             return TestResult(self, TEST_UNK, 1, "No ALP data available")
 
         # Path interference check above should cover this too
-        await self.send(syn_res.make_reply(self.src[0], self.dst[0], window=0xffff, ack=True,
+        await self.send(syn_res.make_reply(self.src, self.dst, window=0xffff, ack=True,
                                            options=(MSSOption(512),), payload=req))
         del req
 
@@ -317,7 +318,7 @@ class LateOptionTest(MSSSupportTest):
         await asyncio.sleep(30, loop=self._loop)
         while True:
             try:
-                seg = Segment.from_bytes(self.dst[0].packed, self.src[0].packed,
+                seg = Segment.from_bytes(self.dst.ip.packed, self.src.ip.packed,
                                          self.recv_queue.get_nowait())
             except asyncio.QueueEmpty:
                 break
@@ -331,5 +332,5 @@ class LateOptionTest(MSSSupportTest):
                     result = TestResult(self, TEST_FAIL, 1, "Segment too large")
                     break
 
-        await self.send(seg.make_reset(self.src[0], self.dst[0]))
+        await self.send(seg.make_reset(self.src, self.dst))
         return result
