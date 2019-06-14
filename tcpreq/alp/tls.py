@@ -23,7 +23,8 @@ class TLSProtocol(BaseProtocol):
 
         self._in_bio = ssl.MemoryBIO()
         self._out_bio = ssl.MemoryBIO()
-        self._ssl = self._SSL_CTX.wrap_bio(self._in_bio, self._out_bio, server_side=False)
+        self._ssl = self._SSL_CTX.wrap_bio(self._in_bio, self._out_bio,
+                                           server_side=False, server_hostname=self._dst.host)
 
     def pull_data(self, length_hint: int = None) -> Optional[bytes]:
         try:

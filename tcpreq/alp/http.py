@@ -1,4 +1,5 @@
 from typing import ClassVar, List, Tuple
+from urllib.parse import quote as http_quote
 
 from .base import BaseProtocol
 
@@ -31,8 +32,10 @@ class HTTPProtocol(BaseProtocol):
     __slots__ = ()
 
     def pull_data(self, length_hint: int = None) -> bytes:
-        # TODO: add From: header?
-        res = bytearray(b"GET / HTTP/1.1\r\nHost: \r\nUser-Agent: tcpreq (TCP research scan)\r\n")
+        res = bytearray(b"GET / HTTP/1.1\r\nHost: ")
+        if self._dst.host is not None:
+            res += http_quote(self._dst.host).encode("ascii")
+        res += b"\r\nUser-Agent: tcpreq (TCP research scan)\r\n"
         if length_hint is None or length_hint - len(res) <= 2:
             return res + b"\r\n"
 
