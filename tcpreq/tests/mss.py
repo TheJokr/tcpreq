@@ -73,7 +73,7 @@ class MSSSupportTest(BaseTest):
 
         # TODO: multiple flights?
         alp = ALP_MAP[self.dst[1]](self.src, self.dst)
-        req = alp.pull_data(256)
+        req = alp.pull_data(200)
         if req is None:
             await self.send(syn_res.make_reset(self.src[0], self.dst[0]))
             return TestResult(self, TEST_UNK, 1, "No ALP data available")
@@ -192,7 +192,7 @@ class MissingMSSTest(BaseTest):
 
         # TODO: multiple flights?
         alp = ALP_MAP[self.dst[1]](self.src, self.dst)
-        req = alp.pull_data(seg_max_len)
+        req = alp.pull_data(seg_max_len - 40)
         if req is None:
             await self.send(syn_res.make_reset(self.src[0], self.dst[0]))
             return TestResult(self, TEST_UNK, 1, "No ALP data available")
@@ -302,7 +302,7 @@ class LateOptionTest(MSSSupportTest):
 
         # TODO: multiple flights?
         alp = ALP_MAP[self.dst[1]](self.src, self.dst)
-        req = alp.pull_data(256)
+        req = alp.pull_data(200)
         if req is None:
             await self.send(syn_res.make_reset(self.src[0], self.dst[0]))
             return TestResult(self, TEST_UNK, 1, "No ALP data available")
