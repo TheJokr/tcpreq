@@ -8,7 +8,7 @@ from .result import TestResult, TEST_PASS, TEST_UNK, TEST_FAIL
 from .ttl_coding import encode_ttl, decode_ttl
 from ..tcp import Segment, MSSOption
 from ..tcp.options import parse_options
-from ..alp import PORT_MAP as ALP_MAP
+from ..alp import ALP_MAP
 
 
 class MSSSupportTest(BaseTest):
