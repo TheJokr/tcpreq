@@ -118,9 +118,10 @@ class MSSSupportTest(BaseTest):
         try:
             for opt in parse_options(opts):
                 if isinstance(opt, MSSOption):
-                    if opt == MSSOption:
+                    if opt == self._MSS_OPT:
                         found = True
                     else:
+                        found = False
                         break
         except ValueError:
             pass
@@ -233,7 +234,7 @@ class MissingMSSTest(BaseTest):
 
         opts = bytearray(quote[20:head_len])
         try:
-            if all(not isinstance(opt, MSSOption) for opt in parse_options(opts)):
+            if not any(isinstance(opt, MSSOption) for opt in parse_options(opts)):
                 return None
         except ValueError:
             pass
