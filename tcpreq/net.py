@@ -1,13 +1,13 @@
 from abc import abstractmethod
-from typing import Generic, ClassVar, Dict, List, Tuple, Union, Optional
+from typing import Generic, ClassVar, Dict, List, Tuple, Deque, Optional
 import sys
 import itertools
-from collections import Counter
+from collections import Counter, deque
 from ipaddress import IPv4Address, IPv6Address
 import socket
 import asyncio
 
-from .types import IPAddressType, ScanHost
+from .types import IPAddressType, ScanHost, OutgoingPacket
 from .limiter import TokenBucket, OutOfTokensError
 from .tests import BaseTest
 from .tcp import Segment
@@ -60,8 +60,7 @@ class BaseTestMultiplexer(Generic[IPAddressType]):
         self._icmp_sock = icmp_sock
         self._src_addr: IPAddressType = src
         self._test_map: Dict[Tuple[int, bytes, int], "BaseTest[IPAddressType]"] = {}
-        self._send_queue: ("asyncio.Queue[Union[Tuple[Segment, IPAddressType],"
-                           "Tuple[Segment, IPAddressType, int]]]") = asyncio.Queue(loop=loop)
+        self._send_queue: Deque[OutgoingPacket[IPAddressType]] = deque()
         self._send_limiter = send_limiter
         self._sent_rsts: Dict[Tuple[int, bytes, int], int] = {}
         self._loop = loop
@@ -119,7 +118,7 @@ class BaseTestMultiplexer(Generic[IPAddressType]):
         if rsts >= self._RST_THRESHOLD:
             return
 
-        self._send_queue.put_nowait((
+        self._send_queue.append(OutgoingPacket(
             seg.make_reset(ScanHost(self._src_addr, key[0]), ScanHost(src_addr, key[2])),
             src_addr
         ))
@@ -168,6 +167,7 @@ class IPv4TestMultiplexer(BaseTestMultiplexer[IPv4Address]):
         # Enable IP_HDRINCL to modify Identification field in traces
         self._sock.setsockopt(socket.IPPROTO_IP, socket.IP_HDRINCL, 1)
         self._send_next: Optional[Tuple[bytes, Tuple[str, int]]] = None
+        self._next_fut: Optional["asyncio.Future[None]"] = None
 
         if _IS_LINUX:
             # See linux/net/ipv4/raw.c
@@ -264,26 +264,29 @@ class IPv4TestMultiplexer(BaseTestMultiplexer[IPv4Address]):
             try:
                 self._send_limiter.take()
                 self._sock.sendto(*self._send_next)
+                if self._next_fut is not None:
+                    self._next_fut.set_result(None)
             except (OutOfTokensError, BlockingIOError):
                 return
             else:
                 self._send_next = None
+                self._next_fut = None
 
         try:
             while True:
-                item = self._send_queue.get_nowait()
-                dst = (str(item[1]), 0)
+                item = self._send_queue.popleft()
+                dst = (str(item.dst_addr), 0)
                 data = bytearray(self._IP_HEAD)
-                data[16:20] = item[1].packed
-                data.extend(bytes(item[0]))
+                data[16:20] = item.dst_addr.packed
+                data.extend(bytes(item.seg))
 
-                if len(item) == 3:
+                if item.ttl is not None:
                     # Set TTL
-                    data[8] = item[2]  # type: ignore
+                    data[8] = item.ttl
 
                     # Encode TTL into IHL field + options.
                     # The position of the EOOL option specifies the remainder (0-3).
-                    pad_rows, eool_idx = divmod(item[2], 4)  # type: ignore
+                    pad_rows, eool_idx = divmod(item.ttl, 4)
                     pad_rows += 1  # pad_rows must be at least 1 to embed EOOL
                     data[0] = 0x40 | (pad_rows + 5)
 
@@ -292,16 +295,19 @@ class IPv4TestMultiplexer(BaseTestMultiplexer[IPv4Address]):
                     data[20:20] = opts
 
                     # Encode TTL into ID field (bits 15-11, 9-5, and 4-0)
-                    enc = item[2]  # type: ignore
+                    enc = item.ttl
                     enc |= (enc << 11) | (enc << 5)
                     data[4:6] = enc.to_bytes(2, "big")
 
                 self._send_limiter.take()
                 self._sock.sendto(data, dst)
-        except asyncio.QueueEmpty:
+                if item.fut is not None:
+                    item.fut.set_result(None)
+        except IndexError:
             pass
         except (OutOfTokensError, BlockingIOError):
             self._send_next = (data, dst)
+            self._next_fut = item.fut
 
 
 class IPv6TestMultiplexer(BaseTestMultiplexer[IPv6Address]):
@@ -311,6 +317,7 @@ class IPv6TestMultiplexer(BaseTestMultiplexer[IPv6Address]):
                                                   src, send_limiter, loop)
 
         self._send_next: Optional[Tuple[bytes, Tuple[str, int], List[Tuple[int, int, bytes]]]] = None
+        self._next_fut: Optional["asyncio.Future[None]"] = None
 
         if _IS_LINUX:
             # See linux/net/ipv6/raw.c
@@ -385,22 +392,25 @@ class IPv6TestMultiplexer(BaseTestMultiplexer[IPv6Address]):
                     self._sock.sendmsg((msg[0],), msg[2], 0, msg[1])
                 else:
                     self._sock.sendto(msg[0], msg[1])
+                if self._next_fut is not None:
+                    self._next_fut.set_result(None)
             except (OutOfTokensError, BlockingIOError):
                 return
             else:
                 self._send_next = None
+                self._next_fut = None
 
         try:
             while True:
-                item = self._send_queue.get_nowait()
-                dst = (str(item[1]), 0)
-                data = bytes(item[0])
+                item = self._send_queue.popleft()
+                dst = (str(item.dst_addr), 0)
+                data = bytes(item.seg)
                 ancil: List[Tuple[int, int, bytes]] = []
 
-                if len(item) == 3:
+                if item.ttl is not None:
                     # Set hop limit
                     ancil.append((_IPPROTO_IPV6, socket.IPV6_HOPLIMIT,
-                                  item[2].to_bytes(4, sys.byteorder)))  # type: ignore
+                                  item.ttl.to_bytes(4, sys.byteorder)))
 
                     # Can't encode TTL into flow label because Linux
                     # requires a lot of internal setup to overwrite it,
@@ -410,7 +420,10 @@ class IPv6TestMultiplexer(BaseTestMultiplexer[IPv6Address]):
                     self._sock.sendmsg((data,), ancil, 0, dst)
                 else:
                     self._sock.sendto(data, dst)
-        except asyncio.QueueEmpty:
+                if item.fut is not None:
+                    item.fut.set_result(None)
+        except IndexError:
             return
         except (OutOfTokensError, BlockingIOError):
             self._send_next = (data, dst, ancil)
+            self._next_fut = item.fut

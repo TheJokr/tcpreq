@@ -1,11 +1,11 @@
 from abc import abstractmethod
-from typing import Generic, ClassVar, Awaitable, List, Tuple, Union, Optional
+from typing import Generic, ClassVar, Awaitable, List, Tuple, Deque, Union, Optional
 import time
 import math
 import asyncio
 
 from .result import TestResult, TEST_UNK, TEST_FAIL
-from ..types import IPAddressType, ScanHost
+from ..types import IPAddressType, ScanHost, OutgoingPacket
 from ..tcp import Segment
 
 
@@ -29,17 +29,16 @@ class BaseTest(Generic[IPAddressType]):
         self.dst: ScanHost[IPAddressType] = dst
         self.recv_queue: "asyncio.Queue[bytearray]" = asyncio.Queue(loop=loop)
         self.quote_queue: List[Tuple[bytes, int, bytes]] = []
-        self.send_queue: Optional["asyncio.Queue[Union[Tuple[Segment, IPAddressType],"
-                                  "Tuple[Segment, IPAddressType, int]]]"] = None
+        self.send_queue: Optional[Deque[OutgoingPacket[IPAddressType]]] = None
         self._loop = loop
 
     def send(self, seg: Segment, ttl: int = None) -> Awaitable[None]:
         assert self.send_queue is not None, "Test is not registered with any multiplexer"
-        if ttl is None:
-            return self.send_queue.put((seg, self.dst.ip))
+        assert ttl is None or 1 <= ttl <= self._HOP_LIMIT
 
-        assert 1 <= ttl <= self._HOP_LIMIT
-        return self.send_queue.put((seg, self.dst.ip, ttl))
+        fut = self._loop.create_future()
+        self.send_queue.append(OutgoingPacket(seg, self.dst.ip, ttl, fut))
+        return fut
 
     async def receive(self, timeout: float) -> Segment:
         while timeout > 0:
