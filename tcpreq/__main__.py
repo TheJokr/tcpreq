@@ -69,7 +69,8 @@ def main() -> None:
     ipv4_set: Set[ScanHost[IPv4Address]] = set()
     ipv6_set: Set[ScanHost[IPv6Address]] = set()
     for tgt in itertools.chain(args.target, itertools.chain.from_iterable(args.nmap),
-                               itertools.chain.from_iterable(args.zmap)):
+                               itertools.chain.from_iterable(args.zmap),
+                               itertools.chain.from_iterable(args.json)):
         if isinstance(tgt.ip, IPv4Address) and ipv4_bl is not None and tgt.ip not in ipv4_bl:
             ipv4_set.add(tgt)
         elif ipv6_bl is not None and isinstance(tgt.ip, IPv6Address) and tgt.ip not in ipv6_bl:

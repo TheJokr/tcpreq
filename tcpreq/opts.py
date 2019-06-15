@@ -3,6 +3,7 @@ import argparse
 from urllib.parse import urlparse
 import ipaddress
 import xml.etree.ElementTree as ET
+import json
 import csv
 
 from .types import AnyIPAddress, AnyIPNetwork, ScanHost
@@ -63,6 +64,15 @@ def _parse_zmap_csv(fpath: str) -> Generator[ScanHost, None, None]:
         yield ScanHost(ipaddress.ip_address(addr), int(port))
 
 
+def _parse_custom_json(fpath: str) -> Generator[ScanHost, None, None]:
+    for line in open(fpath, encoding="utf-8"):
+        raw = json.loads(line)
+        try:
+            yield ScanHost(ipaddress.ip_address(raw["ip"]), raw["port"], raw.get("host", None), raw)
+        except KeyError:
+            continue
+
+
 def _parse_blacklist(fpath: str) -> Generator[AnyIPNetwork, None, None]:
     for line in open(fpath):
         line = line.strip()
@@ -114,3 +124,6 @@ parser.add_argument("--nmap", action="append", default=[], type=_parse_nmap_xml,
 parser.add_argument("--zmap", action="append", default=[], type=_parse_zmap_csv,
                     help="CSV output of a ZMap TCP port scan with targets to test. "
                          "May be specified multiple times.", metavar="targets.csv")
+parser.add_argument("--json", action="append", default=[], type=_parse_custom_json,
+                    help="A custom list of targets to test in JSON Lines format. "
+                         "May be specified multiple times.", metavar="targets.jsonl")
