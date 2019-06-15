@@ -7,6 +7,7 @@ import asyncio
 from .base import BaseTest
 from .result import TestResult, TEST_PASS, TEST_UNK, TEST_FAIL
 from .ttl_coding import encode_ttl, decode_ttl
+from ..types import IPAddressType
 from ..tcp import Segment, check_window
 from ..tcp.checksum import calc_checksum
 
@@ -17,7 +18,7 @@ def _bytes_int_xor(lhs: bytes, rhs: int) -> bytes:
 
 # Make sure TCP TX checksum offloading is disabled
 # E.g. ethtool -K <DEVNAME> tx off on Linux
-class ChecksumTest(BaseTest):
+class ChecksumTest(BaseTest[IPAddressType]):
     """Evaluate response to incorrect checksums in SYNs and after handshake."""
     __slots__ = ()
 
@@ -96,7 +97,7 @@ class ChecksumTest(BaseTest):
                 # Verify checksum if full header is included
                 seg = bytearray(quote)
                 seg[16:18] = b"\x00\x00"
-                cs_vrfy = (calc_checksum(src_addr, self.dst[0].packed, seg) == cs)
+                cs_vrfy = (calc_checksum(src_addr, self.dst.ip.packed, seg) == cs)
                 if not cs_vrfy:
                     # Checksum is still incorrect
                     return None
@@ -110,7 +111,7 @@ class ChecksumTest(BaseTest):
             timeout -= (time.monotonic() - start)
 
             try:
-                return Segment.from_bytes(self.dst[0].packed, self.src[0].packed, data)
+                return Segment.from_bytes(self.dst.ip.packed, self.src.ip.packed, data)
             except ValueError as e:
                 if str(e) == "Checksum mismatch":
                     return None
@@ -169,7 +170,7 @@ class ChecksumTest(BaseTest):
         if isinstance(syn_res, TestResult):
             return syn_res
 
-        ack_seg = syn_res.make_reply(self.src[0], self.dst[0], window=512, ack=True)
+        ack_seg = syn_res.make_reply(self.src, self.dst, window=512, ack=True)
 
         seg_arr = bytearray(ack_seg._raw)
         seg_arr[16:18] = _bytes_int_xor(seg_arr[16:18], random.randint(1, 0xffff))
@@ -206,7 +207,7 @@ class ChecksumTest(BaseTest):
                 return TestResult(self, TEST_PASS)
 
         # Reset connection to be sure
-        await self.send(ack_res.make_reset(self.src[0], self.dst[0]))
+        await self.send(ack_res.make_reset(self.src, self.dst))
         return result
 
     async def _check_syn_resp(self, sent_seq: int, test_stage: int) -> Optional[TestResult]:
@@ -224,7 +225,7 @@ class ChecksumTest(BaseTest):
             exp_ack = (sent_seq + 1) % 0x1_0000_0000
             if not (res.flags & 0x04):
                 # Reset connection to be sure
-                await self.send(res.make_reset(self.src[0], self.dst[0]))
+                await self.send(res.make_reset(self.src, self.dst))
                 return TestResult(self, TEST_FAIL, test_stage,
                                   "Non-RST in reply to SYN with incorrect checksum")
             elif res.ack_seq != exp_ack:

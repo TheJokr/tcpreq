@@ -2,7 +2,7 @@ from typing import ClassVar, Tuple, Optional
 import ssl
 
 from .base import BaseProtocol
-from ..types import IPAddressType
+from ..types import IPAddressType, ScanHost
 
 
 class TLSProtocol(BaseProtocol):
@@ -18,12 +18,13 @@ class TLSProtocol(BaseProtocol):
 
     __slots__ = ("_in_bio", "_out_bio", "_ssl")
 
-    def __init__(self, src: Tuple[IPAddressType, int], dst: Tuple[IPAddressType, int]) -> None:
+    def __init__(self, src: ScanHost[IPAddressType], dst: ScanHost[IPAddressType]) -> None:
         super(TLSProtocol, self).__init__(src, dst)
 
         self._in_bio = ssl.MemoryBIO()
         self._out_bio = ssl.MemoryBIO()
-        self._ssl = self._SSL_CTX.wrap_bio(self._in_bio, self._out_bio, server_side=False)
+        self._ssl = self._SSL_CTX.wrap_bio(self._in_bio, self._out_bio,
+                                           server_side=False, server_hostname=self._dst.host)
 
     def pull_data(self, length_hint: int = None) -> Optional[bytes]:
         try:

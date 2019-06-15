@@ -1,7 +1,7 @@
 from typing import Generic, ClassVar, Tuple, Optional
 from abc import abstractmethod
 
-from ..types import IPAddressType
+from ..types import IPAddressType, ScanHost
 
 
 class BaseProtocol(Generic[IPAddressType]):
@@ -9,9 +9,9 @@ class BaseProtocol(Generic[IPAddressType]):
 
     __slots__ = ("_src", "_dst")
 
-    def __init__(self, src: Tuple[IPAddressType, int], dst: Tuple[IPAddressType, int]) -> None:
-        self._src: Tuple[IPAddressType, int] = src
-        self._dst: Tuple[IPAddressType, int] = dst
+    def __init__(self, src: ScanHost[IPAddressType], dst: ScanHost[IPAddressType]) -> None:
+        self._src: ScanHost[IPAddressType] = src
+        self._dst: ScanHost[IPAddressType] = dst
 
     @abstractmethod
     def pull_data(self, length_hint: int = None) -> Optional[bytes]:

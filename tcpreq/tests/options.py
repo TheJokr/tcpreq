@@ -5,11 +5,12 @@ import asyncio
 from .base import BaseTest
 from .result import TestResult, TEST_PASS, TEST_UNK, TEST_FAIL
 from .ttl_coding import encode_ttl, decode_ttl
+from ..types import IPAddressType
 from ..tcp import Segment, noop_option, end_of_options
 from ..tcp.options import BaseOption, SizedOption, parse_options
 
 
-class OptionSupportTest(BaseTest):
+class OptionSupportTest(BaseTest[IPAddressType]):
     """Verify support for the two legacy options."""
     __slots__ = ()
 
@@ -23,7 +24,7 @@ class OptionSupportTest(BaseTest):
         if isinstance(syn_res, TestResult):
             return syn_res
 
-        await self.send(syn_res.make_reset(self.src[0], self.dst[0]))
+        await self.send(syn_res.make_reset(self.src, self.dst))
         del syn_res
 
         await asyncio.sleep(10, loop=self._loop)
@@ -73,7 +74,7 @@ class OptionSupportTest(BaseTest):
                 res_stat = 1
         del res_stat, hops
 
-        await self.send(syn_res.make_reset(self.src[0], self.dst[0]))
+        await self.send(syn_res.make_reset(self.src, self.dst))
         return result
 
     def _check_quote(self, src_addr: bytes, ttl_guess: int, quote: bytes) -> Optional[int]:
@@ -97,7 +98,7 @@ class OptionSupportTest(BaseTest):
         return decode_ttl(quote, ttl_guess, self._HOP_LIMIT, win=True, ack=True, up=True, opts=False)
 
 
-class UnknownOptionTest(BaseTest):
+class UnknownOptionTest(BaseTest[IPAddressType]):
     """Test whether unknown options are ignored silently."""
     # Option kind 158 is currently reserved
     # See https://www.iana.org/assignments/tcp-parameters/tcp-parameters.xhtml
@@ -115,7 +116,7 @@ class UnknownOptionTest(BaseTest):
         if isinstance(syn_res, TestResult):
             return syn_res
 
-        await self.send(syn_res.make_reset(self.src[0], self.dst[0]))
+        await self.send(syn_res.make_reset(self.src, self.dst))
         del syn_res
 
         await asyncio.sleep(10, loop=self._loop)
@@ -167,7 +168,7 @@ class UnknownOptionTest(BaseTest):
                 res_stat = 1
         del res_stat, hops
 
-        await self.send(syn_res.make_reset(self.src[0], self.dst[0]))
+        await self.send(syn_res.make_reset(self.src, self.dst))
         return result
 
     def _check_quote(self, src_addr: bytes, ttl_guess: int, quote: bytes) -> Optional[int]:
@@ -191,7 +192,7 @@ class UnknownOptionTest(BaseTest):
         return decode_ttl(quote, ttl_guess, self._HOP_LIMIT, win=True, ack=True, up=True, opts=False)
 
 
-class IllegalLengthOptionTest(BaseTest):
+class IllegalLengthOptionTest(BaseTest[IPAddressType]):
     """Verify responsiveness after sending an option with illegal length."""
     # Option kind 2 is assigned to MSS
     # See https://www.iana.org/assignments/tcp-parameters/tcp-parameters.xhtml
@@ -232,7 +233,7 @@ class IllegalLengthOptionTest(BaseTest):
                 result = TestResult(self, TEST_PASS)
 
         if result is not None and result.status is not TEST_PASS:
-            await self.send(syn_res.make_reset(self.src[0], self.dst[0]))
+            await self.send(syn_res.make_reset(self.src, self.dst))
             return result
 
         await asyncio.sleep(10, loop=self._loop)
@@ -256,7 +257,7 @@ class IllegalLengthOptionTest(BaseTest):
         if result is not None:
             try:
                 if not (syn_res.flags & 0x04):
-                    await self.send(syn_res.make_reset(self.src[0], self.dst[0]))
+                    await self.send(syn_res.make_reset(self.src, self.dst))
             except NameError:
                 pass
             return result
@@ -283,7 +284,7 @@ class IllegalLengthOptionTest(BaseTest):
         else:
             result = TestResult(self, TEST_PASS)
 
-        await self.send(syn_res.make_reset(self.src[0], self.dst[0]))
+        await self.send(syn_res.make_reset(self.src, self.dst))
         return result
 
     def _check_quote(self, src_addr: bytes, ttl_guess: int, quote: bytes) -> Optional[int]:

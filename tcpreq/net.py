@@ -7,7 +7,7 @@ from ipaddress import IPv4Address, IPv6Address
 import socket
 import asyncio
 
-from .types import IPAddressType
+from .types import IPAddressType, ScanHost
 from .limiter import TokenBucket, OutOfTokensError
 from .tests import BaseTest
 from .tcp import Segment
@@ -69,12 +69,12 @@ class BaseTestMultiplexer(Generic[IPAddressType]):
     @staticmethod
     def _test_map_key(test: BaseTest[IPAddressType]) -> Tuple[int, bytes, int]:
         # Local address is verified in register_test and handled by OS
-        return test.src[1], test.dst[0].packed, test.dst[1]
+        return test.src.port, test.dst.ip.packed, test.dst.port
 
     def register_test(self, test: BaseTest[IPAddressType]) -> None:
         if test.send_queue is not None:
             raise ValueError("Test is already registered with a multiplexer")
-        if test.src[0] != self._src_addr:
+        if test.src.ip != self._src_addr:
             raise ValueError("Test's source address doesn't match socket's source address")
 
         test.send_queue = self._send_queue
@@ -119,7 +119,10 @@ class BaseTestMultiplexer(Generic[IPAddressType]):
         if rsts >= self._RST_THRESHOLD:
             return
 
-        self._send_queue.put_nowait((seg.make_reset(self._src_addr, src_addr), src_addr))
+        self._send_queue.put_nowait((
+            seg.make_reset(ScanHost(self._src_addr, key[0]), ScanHost(src_addr, key[2])),
+            src_addr
+        ))
         self._sent_rsts[key] = rsts + 1
 
     @abstractmethod

@@ -1,22 +1,23 @@
-from typing import Type, Tuple, Generator
+from typing import Type, Generator
 import argparse
 from urllib.parse import urlparse
 import ipaddress
 import xml.etree.ElementTree as ET
+import json
 import csv
 
-from .types import AnyIPAddress, AnyIPNetwork
+from .types import AnyIPAddress, AnyIPNetwork, ScanHost
 from . import tests
 
 _INT_MULTS = {"k": 10**3, "m": 10**6, "g": 10**9}
 
 
-def _parse_target(value: str) -> Tuple[AnyIPAddress, int]:
+def _parse_target(value: str) -> ScanHost:
     urlres = urlparse("//" + value)
     if urlres.port is None:
         raise ValueError("Port number is required")
 
-    return ipaddress.ip_address(urlres.hostname), urlres.port
+    return ScanHost(ipaddress.ip_address(urlres.hostname), urlres.port)
 
 
 def _parse_suffixed_int(value: str) -> int:
@@ -30,7 +31,7 @@ def _parse_suffixed_int(value: str) -> int:
         raise ValueError("Unknown integer suffix") from e
 
 
-def _parse_nmap_xml(fpath: str) -> Generator[Tuple[AnyIPAddress, int], None, None]:
+def _parse_nmap_xml(fpath: str) -> Generator[ScanHost, None, None]:
     xml = ET.parse(fpath)
     for host in xml.iterfind('./host/status[@state="up"]/..'):
         addr = host.find("address")
@@ -43,10 +44,10 @@ def _parse_nmap_xml(fpath: str) -> Generator[Tuple[AnyIPAddress, int], None, Non
             ip_addr = ipaddress.IPv4Address(addr.get("addr"))
 
         for port in host.iterfind('./ports/port[@protocol="tcp"]/state[@state="open"]/..'):
-            yield ip_addr, int(port.get("portid"))
+            yield ScanHost(ip_addr, int(port.get("portid")))
 
 
-def _parse_zmap_csv(fpath: str) -> Generator[Tuple[AnyIPAddress, int], None, None]:
+def _parse_zmap_csv(fpath: str) -> Generator[ScanHost, None, None]:
     reader = csv.DictReader(open(fpath, newline=''))
     if not {"success", "saddr", "sport"}.issubset(reader.fieldnames):
         raise ValueError("Missing at least one required key: success, saddr, sport")
@@ -60,7 +61,16 @@ def _parse_zmap_csv(fpath: str) -> Generator[Tuple[AnyIPAddress, int], None, Non
         if None in (addr, port):
             continue
 
-        yield ipaddress.ip_address(addr), int(port)
+        yield ScanHost(ipaddress.ip_address(addr), int(port))
+
+
+def _parse_custom_json(fpath: str) -> Generator[ScanHost, None, None]:
+    for line in open(fpath, encoding="utf-8"):
+        raw = json.loads(line)
+        try:
+            yield ScanHost(ipaddress.ip_address(raw["ip"]), raw["port"], raw.get("host", None), raw)
+        except KeyError:
+            continue
 
 
 def _parse_blacklist(fpath: str) -> Generator[AnyIPNetwork, None, None]:
@@ -114,3 +124,6 @@ parser.add_argument("--nmap", action="append", default=[], type=_parse_nmap_xml,
 parser.add_argument("--zmap", action="append", default=[], type=_parse_zmap_csv,
                     help="CSV output of a ZMap TCP port scan with targets to test. "
                          "May be specified multiple times.", metavar="targets.csv")
+parser.add_argument("--json", action="append", default=[], type=_parse_custom_json,
+                    help="A custom list of targets to test in JSON Lines format. "
+                         "May be specified multiple times.", metavar="targets.jsonl")

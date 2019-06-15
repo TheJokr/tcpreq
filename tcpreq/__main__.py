@@ -1,4 +1,4 @@
-from typing import Type, Sequence, List, Set, Tuple, Optional, Generator
+from typing import Type, Sequence, List, Set, Optional, Generator
 import time
 import random
 import itertools
@@ -8,7 +8,7 @@ import asyncio
 
 from pytricia import PyTricia
 
-from .types import AnyIPAddress
+from .types import AnyIPAddress, ScanHost
 from .opts import parser
 from .output import get_output_module
 from .limiter import TokenBucket
@@ -66,13 +66,14 @@ def main() -> None:
 
     # Aggregate targets from multiple sources
     # Filter targets by IP version and blacklist
-    ipv4_set: Set[Tuple[IPv4Address, int]] = set()
-    ipv6_set: Set[Tuple[IPv6Address, int]] = set()
+    ipv4_set: Set[ScanHost[IPv4Address]] = set()
+    ipv6_set: Set[ScanHost[IPv6Address]] = set()
     for tgt in itertools.chain(args.target, itertools.chain.from_iterable(args.nmap),
-                               itertools.chain.from_iterable(args.zmap)):
-        if isinstance(tgt[0], IPv4Address) and ipv4_bl is not None and tgt[0] not in ipv4_bl:
+                               itertools.chain.from_iterable(args.zmap),
+                               itertools.chain.from_iterable(args.json)):
+        if isinstance(tgt.ip, IPv4Address) and ipv4_bl is not None and tgt.ip not in ipv4_bl:
             ipv4_set.add(tgt)
-        elif ipv6_bl is not None and isinstance(tgt[0], IPv6Address) and tgt[0] not in ipv6_bl:
+        elif ipv6_bl is not None and isinstance(tgt.ip, IPv6Address) and tgt.ip not in ipv6_bl:
             ipv6_set.add(tgt)
 
     ipv4_tgts = list(ipv4_set)
@@ -94,21 +95,22 @@ def main() -> None:
     active_tests: Sequence[Type[BaseTest]] = args.test or DEFAULT_TESTS
     for idx, test in enumerate(active_tests):
         all_futs: List["asyncio.Future[TestResult]"] = []
-        src_port = _BASE_PORT + idx
         random.shuffle(ipv4_tgts)
         random.shuffle(ipv6_tgts)
+        ipv4_host = None if ipv4_src is None else ScanHost(ipv4_src, _BASE_PORT + idx)
+        ipv6_host = None if ipv6_src is None else ScanHost(ipv6_src, _BASE_PORT + idx)
 
         # Passing the test as a default parameter to the lambda ensures
         # that the variable is not overwritten by further iterations of the loop
         for tgt in ipv4_tgts:
-            t = test((ipv4_src, src_port), tgt, loop=loop)
+            t = test(ipv4_host, tgt, loop=loop)  # type: ignore
             ipv4_plex.register_test(t)  # type: ignore
             fut = loop.create_task(t.run())
             fut.add_done_callback(lambda f, t=t: ipv4_plex.unregister_test(t))  # type: ignore
             all_futs.append(fut)
 
         for tgt in ipv6_tgts:
-            t = test((ipv6_src, src_port), tgt, loop=loop)
+            t = test(ipv6_host, tgt, loop=loop)  # type: ignore
             ipv6_plex.register_test(t)  # type: ignore
             fut = loop.create_task(t.run())
             fut.add_done_callback(lambda f, t=t: ipv6_plex.unregister_test(t))  # type: ignore
@@ -118,7 +120,7 @@ def main() -> None:
         # to allow linking futures to their targets in _process_results
         print("Running", test.__name__)
         loop.run_until_complete(asyncio.wait(all_futs, loop=loop))
-        output_mod(test.__name__, itertools.chain(ipv4_tgts, ipv6_tgts), all_futs)
+        output_mod(test.__name__, all_futs)
         time.sleep(5)
 
 
