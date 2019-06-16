@@ -1,8 +1,9 @@
-from typing import TypeVar, Generic, Dict, Union
+from typing import TYPE_CHECKING, TypeVar, Generic, Dict, Union
 from ipaddress import IPv4Address, IPv6Address, IPv4Network, IPv6Network
 from asyncio import Future
 
-from .tcp import Segment
+if TYPE_CHECKING:
+    from .tcp import Segment
 
 IPAddressType = TypeVar("IPAddressType", IPv4Address, IPv6Address)
 AnyIPAddress = Union[IPv4Address, IPv6Address]
@@ -35,7 +36,7 @@ class ScanHost(Generic[IPAddressType]):
 class OutgoingPacket(Generic[IPAddressType]):
     __slots__ = ("dst_addr", "ttl", "seg", "fut")
 
-    def __init__(self, seg: Segment, dst_addr: IPAddressType,
+    def __init__(self, seg: "Segment", dst_addr: IPAddressType,
                  ttl: int = None, fut: "Future[None]" = None) -> None:
         self.dst_addr: IPAddressType = dst_addr
         self.ttl = ttl
