@@ -1,4 +1,4 @@
-from typing import ClassVar, Awaitable, List, Optional
+from typing import ClassVar, Awaitable, List, Union, Optional
 import random
 import asyncio
 from ipaddress import IPv4Address
@@ -20,7 +20,8 @@ class MSSSupportTest(BaseTest[IPAddressType]):
 
     __slots__ = ()
 
-    async def run(self) -> TestResult:
+    # Code shared between MSSSupportTest and LateOptionTest
+    async def _setup_mss(self) -> Union[Segment, TestResult]:
         if self.dst.port not in ALP_MAP:
             return TestResult(self, TEST_UNK, 0, "Missing ALP module for port {}".format(self.dst.port))
 
@@ -71,6 +72,12 @@ class MSSSupportTest(BaseTest[IPAddressType]):
         # Clear queues (might contain additional items due to multiple SYNs reaching the target)
         self.quote_queue.clear()
         self.recv_queue = asyncio.Queue(loop=self._loop)
+        return syn_res
+
+    async def run(self) -> TestResult:
+        syn_res = await self._setup_mss()
+        if isinstance(syn_res, TestResult):
+            return syn_res
 
         # TODO: multiple flights?
         alp = ALP_MAP[self.dst.port](self.src, self.dst)
@@ -243,63 +250,15 @@ class MissingMSSTest(BaseTest[IPAddressType]):
         return decode_ttl(quote, ttl_guess, self._HOP_LIMIT, win=False, ack=True, up=True, opts=True)
 
 
-# Derive from MSSSupportTest to avoid duplicating _check_quote
-# TODO: Factor common part into base class for both MSSSupportTest and LateOptionTest
+# Derive from MSSSupportTest to avoid code duplication
 class LateOptionTest(MSSSupportTest[IPAddressType]):
     """Test response to MSS option delivered after the 3WH."""
     __slots__ = ()
 
     async def run(self) -> TestResult:
-        if self.dst.port not in ALP_MAP:
-            return TestResult(self, TEST_UNK, 0, "Missing ALP module for port {}".format(self.dst.port))
-
-        cur_seq = random.randint(0, 0xffff_ffff)
-        opts = (self._MSS_OPT,)
-        futs: List[Awaitable[None]] = []
-        for ttl in range(1, self._HOP_LIMIT + 1):
-            futs.append(self.send(
-                Segment(self.src, self.dst, seq=cur_seq, window=0xffff, syn=True,  # type: ignore
-                        options=opts, **encode_ttl(ttl, win=False, ack=True, up=True, opts=False)),
-                ttl=ttl
-            ))
-        del opts
-        await asyncio.wait(futs, loop=self._loop)
-        del futs
-
-        # TODO: change timeout?
-        syn_res = await self._synchronize(cur_seq, timeout=30, test_stage=1)
+        syn_res = await self._setup_mss()
         if isinstance(syn_res, TestResult):
             return syn_res
-        elif len(syn_res) > 276:
-            result: Optional[TestResult] = TestResult(self, TEST_FAIL, 1, "Segment too large")
-        else:
-            result = None
-
-        await asyncio.sleep(10, loop=self._loop)
-        res_stat = 0
-        hops = (i for i in (self._check_quote(*item) for item in self.quote_queue) if i is not None)
-        for mbox_hop in hops:
-            if mbox_hop == 0 and res_stat >= 1:
-                continue
-
-            reason = "Middlebox interference detected"
-            reason += " at or before hop {0}" if mbox_hop > 0 else " at unknown hop"
-            reason += " (MSS modified or deleted)"
-            result = TestResult(self, TEST_UNK, 1, reason.format(mbox_hop))
-
-            if mbox_hop > 0:
-                break
-            else:
-                res_stat = 1
-        del res_stat, hops
-
-        if result is not None:
-            await self.send(syn_res.make_reset(self.src, self.dst))
-            return result
-
-        # Clear queues (might contain additional items due to multiple SYNs reaching the target)
-        self.quote_queue.clear()
-        self.recv_queue = asyncio.Queue(loop=self._loop)
 
         # TODO: multiple flights?
         alp = ALP_MAP[self.dst.port](self.src, self.dst)
