@@ -5,7 +5,7 @@ from ..tcp import noop_option, end_of_options
 from ..tcp.options import BaseOption
 
 
-def encode_ttl(ttl: int, win: bool = True, ack: bool = True, up: bool = True,
+def encode_ttl(ttl: int, *, win: bool = True, ack: bool = True, up: bool = True,
                opts: bool = True) -> Dict[str, Union[int, Sequence[BaseOption]]]:
     kwargs: Dict[str, Union[int, Sequence[BaseOption]]] = {}
 
@@ -23,7 +23,7 @@ def encode_ttl(ttl: int, win: bool = True, ack: bool = True, up: bool = True,
     return kwargs
 
 
-def decode_ttl(quote: bytes, ttl_guess: int, hop_limit: int, win: bool = True,
+def decode_ttl(quote: bytes, ttl_guess: int, hop_limit: int, *, win: bool = True,
                ack: bool = True, up: bool = True, opts: bool = True) -> int:
     qlen = len(quote)
     ttl_guess = min(ttl_guess, hop_limit)

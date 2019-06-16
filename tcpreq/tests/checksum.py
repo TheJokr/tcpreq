@@ -79,7 +79,7 @@ class ChecksumTest(BaseTest[IPAddressType]):
         return result
 
     def _check_quote(self, src_addr: bytes, ttl_guess: int, quote: bytes,
-                     checksum: bytes) -> Optional[Tuple[int, bool]]:
+                     *, checksum: bytes) -> Optional[Tuple[int, bool]]:
         qlen = len(quote)
         if qlen < 18:
             # Checksum not included in quote

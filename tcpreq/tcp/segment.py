@@ -16,7 +16,7 @@ class Segment(object):
     __slots__ = ("_head_len", "_raw", "_options")
 
     # src, dst are (addr: IPAddressType, port: int) tuples. flags int takes precedence over bools.
-    def __init__(self, src: ScanHost[IPAddressType], dst: ScanHost[IPAddressType],
+    def __init__(self, src: ScanHost[IPAddressType], dst: ScanHost[IPAddressType], *,
                  seq: int, window: int, ack_seq: int = 0, cwr: bool = False, ece: bool = False,
                  urg: bool = False, ack: bool = False, psh: bool = False, rst: bool = False,
                  syn: bool = False, fin: bool = False, flags: int = None, up: int = 0,
@@ -48,7 +48,7 @@ class Segment(object):
         self._options = tuple(options)
 
     # Negative seq is used as fallback if ACK is not set (see below)
-    def make_reply(self, src: ScanHost[IPAddressType], dst: ScanHost[IPAddressType], window: int,
+    def make_reply(self, src: ScanHost[IPAddressType], dst: ScanHost[IPAddressType], *, window: int,
                    seq: int = None, ack_seq: int = None, cwr: bool = False, ece: bool = False,
                    urg: bool = False, ack: bool = False, psh: bool = False, rst: bool = False,
                    syn: bool = False, fin: bool = False, flags: int = None, up: int = 0,
@@ -67,8 +67,9 @@ class Segment(object):
             payload_len = len(self) - self._head_len
             ack_seq = (self.seq + payload_len + syn_fin) % 0x1_0000_0000  # == 2^32
 
-        return Segment(src, dst, seq, window, ack_seq, cwr, ece, urg, ack,
-                       psh, rst, syn, fin, flags, up, options, payload)
+        return Segment(src, dst, seq=seq, window=window, ack_seq=ack_seq, cwr=cwr, ece=ece,
+                       urg=urg, ack=ack, psh=psh, rst=rst, syn=syn, fin=fin, flags=flags,
+                       up=up, options=options, payload=payload)
 
     def make_reset(self, src: ScanHost[IPAddressType], dst: ScanHost[IPAddressType]) -> "Segment":
         # Per RFC 793bis, section 3.4, "Reset Generation", 1. and 2.

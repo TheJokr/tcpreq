@@ -21,7 +21,7 @@ class BaseTest(Generic[IPAddressType]):
     __slots__ = ("src", "dst", "recv_queue", "quote_queue", "send_queue", "_loop")
 
     def __init__(self, src: ScanHost[IPAddressType], dst: ScanHost[IPAddressType],
-                 loop: asyncio.AbstractEventLoop = None) -> None:
+                 *, loop: asyncio.AbstractEventLoop = None) -> None:
         if loop is None:
             loop = asyncio.get_event_loop()
 
@@ -32,7 +32,7 @@ class BaseTest(Generic[IPAddressType]):
         self.send_queue: Optional[Deque[OutgoingPacket[IPAddressType]]] = None
         self._loop = loop
 
-    def send(self, seg: Segment, ttl: int = None) -> Awaitable[None]:
+    def send(self, seg: Segment, *, ttl: int = None) -> Awaitable[None]:
         assert self.send_queue is not None, "Test is not registered with any multiplexer"
         assert ttl is None or 1 <= ttl <= self._HOP_LIMIT
 

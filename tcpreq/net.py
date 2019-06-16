@@ -42,8 +42,9 @@ class BaseTestMultiplexer(Generic[IPAddressType]):
     """Multiplex multiple TCP streams over a single raw IP socket."""
     _RST_THRESHOLD: ClassVar[int] = 3
 
+    @abstractmethod
     def __init__(self, sock_fam: socket.AddressFamily, icmp_proto: int, src: IPAddressType,
-                 send_limiter: TokenBucket, loop: asyncio.AbstractEventLoop = None) -> None:
+                 send_limiter: TokenBucket, *, loop: asyncio.AbstractEventLoop = None) -> None:
         tcp_sock = socket.socket(sock_fam, socket.SOCK_RAW, socket.IPPROTO_TCP)
         icmp_sock = socket.socket(sock_fam, socket.SOCK_RAW, icmp_proto)
         for sock in (tcp_sock, icmp_sock):
@@ -160,9 +161,9 @@ class IPv4TestMultiplexer(BaseTestMultiplexer[IPv4Address]):
     assert len(_IP_HEAD) == 20
 
     def __init__(self, src: IPv4Address, send_limiter: TokenBucket,
-                 loop: asyncio.AbstractEventLoop = None) -> None:
+                 *, loop: asyncio.AbstractEventLoop = None) -> None:
         super(IPv4TestMultiplexer, self).__init__(socket.AF_INET, socket.IPPROTO_ICMP,
-                                                  src, send_limiter, loop)
+                                                  src, send_limiter, loop=loop)
 
         # Enable IP_HDRINCL to modify Identification field in traces
         self._sock.setsockopt(socket.IPPROTO_IP, socket.IP_HDRINCL, 1)
@@ -312,9 +313,9 @@ class IPv4TestMultiplexer(BaseTestMultiplexer[IPv4Address]):
 
 class IPv6TestMultiplexer(BaseTestMultiplexer[IPv6Address]):
     def __init__(self, src: IPv6Address, send_limiter: TokenBucket,
-                 loop: asyncio.AbstractEventLoop = None) -> None:
+                 *, loop: asyncio.AbstractEventLoop = None) -> None:
         super(IPv6TestMultiplexer, self).__init__(socket.AF_INET6, _IPPROTO_ICMPV6,
-                                                  src, send_limiter, loop)
+                                                  src, send_limiter, loop=loop)
 
         self._send_next: Optional[Tuple[bytes, Tuple[str, int], List[Tuple[int, int, bytes]]]] = None
         self._next_fut: Optional["asyncio.Future[None]"] = None
