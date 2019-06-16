@@ -17,16 +17,16 @@ class Segment(object):
 
     # src, dst are (addr: IPAddressType, port: int) tuples. flags int takes precedence over bools.
     def __init__(self, src: ScanHost[IPAddressType], dst: ScanHost[IPAddressType], *,
-                 seq: int, window: int, ack_seq: int = 0, cwr: bool = False, ece: bool = False,
-                 urg: bool = False, ack: bool = False, psh: bool = False, rst: bool = False,
-                 syn: bool = False, fin: bool = False, flags: int = None, up: int = 0,
-                 options: Sequence[BaseOption] = (), payload: bytes = b'') -> None:
+                 seq: int, window: int, ack_seq: int = 0, rsrvd: int = 0, cwr: bool = False,
+                 ece: bool = False, urg: bool = False, ack: bool = False, psh: bool = False,
+                 rst: bool = False, syn: bool = False, fin: bool = False, flags: int = None,
+                 up: int = 0, options: Sequence[BaseOption] = (), payload: bytes = b'') -> None:
         opt_len = sum(len(o) for o in options)
         head_rows = 5
         if opt_len:
             head_rows += math.ceil(opt_len / 4.0)
 
-        doff_rsrvd = (head_rows << 4)  # data offset + reserved bits (zeros)
+        doff_rsrvd = (head_rows << 4) | (rsrvd & 0x0f)
         if flags is None:
             flags = ((cwr << 7) | (ece << 6) | (urg << 5) | (ack << 4) |
                      (psh << 3) | (rst << 2) | (syn << 1) | fin)
@@ -49,10 +49,10 @@ class Segment(object):
 
     # Negative seq is used as fallback if ACK is not set (see below)
     def make_reply(self, src: ScanHost[IPAddressType], dst: ScanHost[IPAddressType], *, window: int,
-                   seq: int = None, ack_seq: int = None, cwr: bool = False, ece: bool = False,
-                   urg: bool = False, ack: bool = False, psh: bool = False, rst: bool = False,
-                   syn: bool = False, fin: bool = False, flags: int = None, up: int = 0,
-                   options: Sequence[BaseOption] = (), payload: bytes = b'') -> "Segment":
+                   seq: int = None, ack_seq: int = None, rsrvd: int = 0, cwr: bool = False,
+                   ece: bool = False, urg: bool = False, ack: bool = False, psh: bool = False,
+                   rst: bool = False, syn: bool = False, fin: bool = False, flags: int = None,
+                   up: int = 0, options: Sequence[BaseOption] = (), payload: bytes = b'') -> "Segment":
         if seq is None or seq < 0:
             if self.flags & 0x10:
                 seq = self.ack_seq
@@ -67,8 +67,8 @@ class Segment(object):
             payload_len = len(self) - self._head_len
             ack_seq = (self.seq + payload_len + syn_fin) % 0x1_0000_0000  # == 2^32
 
-        return Segment(src, dst, seq=seq, window=window, ack_seq=ack_seq, cwr=cwr, ece=ece,
-                       urg=urg, ack=ack, psh=psh, rst=rst, syn=syn, fin=fin, flags=flags,
+        return Segment(src, dst, seq=seq, window=window, ack_seq=ack_seq, rsrvd=rsrvd, cwr=cwr,
+                       ece=ece, urg=urg, ack=ack, psh=psh, rst=rst, syn=syn, fin=fin, flags=flags,
                        up=up, options=options, payload=payload)
 
     def make_reset(self, src: ScanHost[IPAddressType], dst: ScanHost[IPAddressType]) -> "Segment":
