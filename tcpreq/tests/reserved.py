@@ -50,6 +50,12 @@ class ReservedFlagsTest(BaseTest[IPAddressType]):
             syn_res.status = TEST_FAIL
             syn_res.reason += " with reserved flag"  # type: ignore
             return syn_res
+        elif syn_res._raw[12] & 0b1110:
+            await self.send(syn_res.make_reset(self.src, self.dst))
+            return TestResult(
+                self, TEST_FAIL, 2,
+                "Reserved flags not zeroed in reply to SYN during handshake with reserved flag"
+            )
 
         await asyncio.sleep(10, loop=self._loop)
         result = None
@@ -93,6 +99,9 @@ class ReservedFlagsTest(BaseTest[IPAddressType]):
                 result = TestResult(self, TEST_FAIL, 2, "ACK with reserved flag ignored")
             elif ack_res.flags & 0x04:
                 return TestResult(self, TEST_FAIL, 2, "RST in reply to ACK with reserved flag")
+            elif ack_res._raw[12] & 0b1110:
+                result = TestResult(self, TEST_FAIL, 2,
+                                    "Reserved flags not zeroed in reply to ACK with reserved flag")
             else:
                 result = TestResult(self, TEST_PASS)
 
@@ -109,4 +118,4 @@ class ReservedFlagsTest(BaseTest[IPAddressType]):
         if (quote[12] & 0b1110) == 0b0100:
             return None
 
-        return decode_ttl(quote, ttl_guess, hop_limit=self._HOP_LIMIT)
+        return decode_ttl(quote, ttl_guess, self._HOP_LIMIT)
