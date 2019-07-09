@@ -82,9 +82,9 @@ class MSSSupportTest(BaseTest[IPAddressType]):
         # TODO: multiple flights?
         alp = ALP_MAP[self.dst.port](self.src, self.dst)
         req = alp.pull_data(200)
-        if req is None:
+        if req is None or len(req) > 1460:
             await self.send(syn_res.make_reset(self.src, self.dst))
-            return TestResult(self, TEST_UNK, 1, "No ALP data available")
+            return TestResult(self, TEST_UNK, 1, "ALP data unavailable")
 
         await self.send(syn_res.make_reply(self.src, self.dst, window=0xffff, ack=True, payload=req))
         del req
@@ -201,9 +201,9 @@ class MissingMSSTest(BaseTest[IPAddressType]):
         # TODO: multiple flights?
         alp = ALP_MAP[self.dst.port](self.src, self.dst)
         req = alp.pull_data(seg_max_len - 40)
-        if req is None:
+        if req is None or len(req) > 1460:
             await self.send(syn_res.make_reset(self.src, self.dst))
-            return TestResult(self, TEST_UNK, 1, "No ALP data available")
+            return TestResult(self, TEST_UNK, 1, "ALP data unavailable")
 
         await self.send(syn_res.make_reply(self.src, self.dst, window=0xffff, ack=True, payload=req))
         del req
@@ -263,9 +263,9 @@ class LateOptionTest(MSSSupportTest[IPAddressType]):
         # TODO: multiple flights?
         alp = ALP_MAP[self.dst.port](self.src, self.dst)
         req = alp.pull_data(200)
-        if req is None:
+        if req is None or len(req) > 1460:
             await self.send(syn_res.make_reset(self.src, self.dst))
-            return TestResult(self, TEST_UNK, 1, "No ALP data available")
+            return TestResult(self, TEST_UNK, 1, "ALP data unavailable")
 
         # Path interference check above should cover this too
         await self.send(syn_res.make_reply(self.src, self.dst, window=0xffff, ack=True,
