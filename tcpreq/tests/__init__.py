@@ -7,8 +7,10 @@ from .rst_ack import RSTACKTest
 from .options import OptionSupportTest, UnknownOptionTest, IllegalLengthOptionTest
 from .mss import MSSSupportTest, MissingMSSTest, LateOptionTest
 from .reserved import ReservedFlagsTest
+from .urgent import UrgentPointerTest
 
 # List of tests to perform if no explicit list of tests is given
 DEFAULT_TESTS: Tuple[Type[BaseTest], ...] = (
-    ChecksumTest, OptionSupportTest, UnknownOptionTest, MSSSupportTest, MissingMSSTest
+    ChecksumTest, OptionSupportTest, UnknownOptionTest,
+    MSSSupportTest, MissingMSSTest, UrgentPointerTest
 )
