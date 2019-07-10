@@ -18,7 +18,7 @@ class BaseTest(Generic[IPAddressType]):
     # Make sure _HOP_LIMIT can be encoded into IHL+options (39 possible non-zero values).
     assert _HOP_LIMIT <= 39
 
-    __slots__ = ("src", "dst", "recv_queue", "quote_queue", "send_queue", "_loop")
+    __slots__ = ("src", "dst", "_isns", "recv_queue", "quote_queue", "send_queue", "_loop")
 
     def __init__(self, src: ScanHost[IPAddressType], dst: ScanHost[IPAddressType],
                  *, loop: asyncio.AbstractEventLoop = None) -> None:
@@ -27,6 +27,7 @@ class BaseTest(Generic[IPAddressType]):
 
         self.src: ScanHost[IPAddressType] = src
         self.dst: ScanHost[IPAddressType] = dst
+        self._isns: List[Tuple[float, int]] = []
         self.recv_queue: "asyncio.Queue[bytearray]" = asyncio.Queue(loop=loop)
         self.quote_queue: List[Tuple[bytes, int, bytes]] = []
         self.send_queue: Optional[Deque[OutgoingPacket[IPAddressType]]] = None
@@ -47,10 +48,14 @@ class BaseTest(Generic[IPAddressType]):
             timeout -= (time.monotonic() - start)
 
             try:
-                return Segment.from_bytes(self.dst.ip.packed, self.src.ip.packed, data)
+                seg = Segment.from_bytes(self.dst.ip.packed, self.src.ip.packed, data)
             except ValueError:
                 # Discard invalid segments silently and retry
                 pass
+            else:
+                if seg.flags & 0x02:
+                    self._isns.append((time.monotonic(), seg.seq))
+                return seg
 
         raise asyncio.TimeoutError()
 

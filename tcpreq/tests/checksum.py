@@ -111,10 +111,14 @@ class ChecksumTest(BaseTest[IPAddressType]):
             timeout -= (time.monotonic() - start)
 
             try:
-                return Segment.from_bytes(self.dst.ip.packed, self.src.ip.packed, data)
+                seg = Segment.from_bytes(self.dst.ip.packed, self.src.ip.packed, data)
             except ValueError as e:
                 if str(e) == "Checksum mismatch":
                     return None
+            else:
+                if seg.flags & 0x02:
+                    self._isns.append((time.monotonic(), seg.seq))
+                return seg
 
         raise asyncio.TimeoutError()
 
