@@ -89,7 +89,8 @@ class UrgentPointerTest(BaseTest[IPAddressType]):
                     res_stat = 1
 
         if not (ack_res.flags & 0x04):
-            await self.send(ack_res.make_reset(self.src, self.dst))
+            cur_seq = (cur_seq + len(chunks[-1])) % 0x1_0000_0000
+            await self.send(Segment(self.src, self.dst, seq=cur_seq, window=0, ack_seq=0, rst=True))
         return result
 
     def _check_quote(self, src_addr: bytes, ttl_guess: int, quote: bytes, *, up: bytes) -> Optional[int]:
