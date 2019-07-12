@@ -30,6 +30,7 @@ class UrgentPointerTest(BaseTest[IPAddressType]):
         syn_res = await self._synchronize(cur_seq, timeout=30, test_stage=1)
         if isinstance(syn_res, TestResult):
             return syn_res
+        await self.send(syn_res.make_reply(self.src, self.dst, window=4096, ack=True))
 
         alp = ALP_MAP[self.dst.port](self.src, self.dst)
         req = alp.pull_data(self._UDATA_LENGTH_HINT)
@@ -62,35 +63,36 @@ class UrgentPointerTest(BaseTest[IPAddressType]):
         await asyncio.wait(futs, loop=self._loop)
         del futs
 
+        cur_seq = (cur_seq + len(chunks[-1])) % 0x1_0000_0000
         try:
             # TODO: change timeout?
             ack_res = await self.receive(timeout=30)
         except asyncio.TimeoutError:
-            result = TestResult(self, TEST_FAIL, 1,
-                                "Timeout after handshake and request with urgent pointer")
-            ack_res = syn_res
-        else:
-            await asyncio.sleep(10, loop=self._loop)
-            result = TestResult(self, TEST_PASS)
-            res_stat = 0
-            hops = (self._check_quote(*item, up=chck_up) for item in self.quote_queue)
-            for mbox_hop in hops:
-                if mbox_hop is None or (mbox_hop == 0 and res_stat >= 1):
-                    continue
-
-                reason = "Middlebox interference detected"
-                reason += " at or before hop {0}" if mbox_hop > 0 else " at unknown hop"
-                reason += " (URG/UP modified)"
-                result = TestResult(self, TEST_UNK, 1, reason.format(mbox_hop))
-
-                if mbox_hop > 0:
-                    break
-                else:
-                    res_stat = 1
+            await self.send(Segment(self.src, self.dst, seq=cur_seq, window=0, rst=True))
+            return TestResult(self, TEST_FAIL, 1,
+                              "Timeout after handshake and request with urgent pointer")
 
         if not (ack_res.flags & 0x04):
-            cur_seq = (cur_seq + len(chunks[-1])) % 0x1_0000_0000
-            await self.send(Segment(self.src, self.dst, seq=cur_seq, window=0, ack_seq=0, rst=True))
+            await self.send(Segment(self.src, self.dst, seq=cur_seq, window=0, rst=True))
+        await asyncio.sleep(10, loop=self._loop)
+
+        result = TestResult(self, TEST_PASS)
+        res_stat = 0
+        hops = (i for i in (self._check_quote(*item, up=chck_up) for item in self.quote_queue)
+                if i is not None)
+        for mbox_hop in hops:
+            if mbox_hop == 0 and res_stat >= 1:
+                continue
+
+            reason = "Middlebox interference detected"
+            reason += " at or before hop {0}" if mbox_hop > 0 else " at unknown hop"
+            reason += " (URG/UP modified)"
+            result = TestResult(self, TEST_UNK, 1, reason.format(mbox_hop))
+
+            if mbox_hop > 0:
+                break
+            else:
+                res_stat = 1
         return result
 
     def _check_quote(self, src_addr: bytes, ttl_guess: int, quote: bytes, *, up: bytes) -> Optional[int]:

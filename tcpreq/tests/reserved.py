@@ -57,7 +57,9 @@ class ReservedFlagsTest(BaseTest[IPAddressType]):
                 "Reserved flags not zeroed in reply to SYN during handshake with reserved flag"
             )
 
+        await self.send(syn_res.make_reply(self.src, self.dst, window=1024, rsrvd=0b0100, ack=True))
         await asyncio.sleep(10, loop=self._loop)
+
         result = None
         res_stat = 0
         hops = (i for i in (self._check_quote(*item) for item in self.quote_queue) if i is not None)
@@ -84,7 +86,6 @@ class ReservedFlagsTest(BaseTest[IPAddressType]):
         self.quote_queue.clear()
         self.recv_queue = asyncio.Queue(loop=self._loop)
 
-        await self.send(syn_res.make_reply(self.src, self.dst, window=1024, rsrvd=0b0100, ack=True))
         try:
             # TODO: change timeout?
             ack_res = await self.receive(timeout=30)

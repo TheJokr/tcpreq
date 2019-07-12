@@ -42,12 +42,11 @@ class MSSSupportTest(BaseTest[IPAddressType]):
         syn_res = await self._synchronize(cur_seq, timeout=30, test_stage=1)
         if isinstance(syn_res, TestResult):
             return syn_res
-        elif len(syn_res) > 276:
-            result: Optional[TestResult] = TestResult(self, TEST_FAIL, 1, "Segment too large")
-        else:
-            result = None
 
+        await self.send(syn_res.make_reply(self.src, self.dst, window=0xffff, ack=True))
         await asyncio.sleep(10, loop=self._loop)
+
+        result = None if len(syn_res) <= 276 else TestResult(self, TEST_FAIL, 1, "Segment too large")
         res_stat = 0
         hops = (i for i in (self._check_quote(*item) for item in self.quote_queue) if i is not None)
         for mbox_hop in hops:
@@ -167,12 +166,12 @@ class MissingMSSTest(BaseTest[IPAddressType]):
         syn_res = await self._synchronize(cur_seq, timeout=30, test_stage=1)
         if isinstance(syn_res, TestResult):
             return syn_res
-        elif len(syn_res) > seg_max_len:
-            result: Optional[TestResult] = TestResult(self, TEST_FAIL, 1, "Segment too large")
-        else:
-            result = None
 
+        await self.send(syn_res.make_reply(self.src, self.dst, window=0xffff, ack=True))
         await asyncio.sleep(10, loop=self._loop)
+
+        result = (None if len(syn_res) <= seg_max_len else
+                  TestResult(self, TEST_FAIL, 1, "Segment too large"))
         res_stat = 0
         hops = (i for i in (self._check_quote(*item) for item in self.quote_queue) if i is not None)
         for mbox_hop in hops:

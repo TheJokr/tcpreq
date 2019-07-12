@@ -55,7 +55,9 @@ class OptionSupportTest(BaseTest[IPAddressType]):
             syn_res.reason += " with options"  # type: ignore
             return syn_res
 
+        await self.send(syn_res.make_reset(self.src, self.dst))
         await asyncio.sleep(10, loop=self._loop)
+
         result = TestResult(self, TEST_PASS)
         res_stat = 0
         hops = (i for i in (self._check_quote(*item) for item in self.quote_queue) if i is not None)
@@ -73,8 +75,6 @@ class OptionSupportTest(BaseTest[IPAddressType]):
             else:
                 res_stat = 1
         del res_stat, hops
-
-        await self.send(syn_res.make_reset(self.src, self.dst))
         return result
 
     def _check_quote(self, src_addr: bytes, ttl_guess: int, quote: bytes) -> Optional[int]:
@@ -149,7 +149,9 @@ class UnknownOptionTest(BaseTest[IPAddressType]):
             syn_res.reason += " with unknown option"  # type: ignore
             return syn_res
 
+        await self.send(syn_res.make_reset(self.src, self.dst))
         await asyncio.sleep(10, loop=self._loop)
+
         result = TestResult(self, TEST_PASS)
         res_stat = 0
         hops = (i for i in (self._check_quote(*item) for item in self.quote_queue) if i is not None)
@@ -167,8 +169,6 @@ class UnknownOptionTest(BaseTest[IPAddressType]):
             else:
                 res_stat = 1
         del res_stat, hops
-
-        await self.send(syn_res.make_reset(self.src, self.dst))
         return result
 
     def _check_quote(self, src_addr: bytes, ttl_guess: int, quote: bytes) -> Optional[int]:
@@ -221,7 +221,8 @@ class IllegalLengthOptionTest(BaseTest[IPAddressType]):
         except asyncio.TimeoutError:
             result = None
         else:
-            if syn_res.flags & 0x04 and syn_res.ack_seq == cur_seq:
+            is_rst = bool(syn_res.flags & 0x04)
+            if is_rst and syn_res.ack_seq == cur_seq:
                 result = TestResult(self, TEST_PASS)
             elif (syn_res.flags & 0x12) != 0x12:
                 result = TestResult(self, TEST_FAIL, 1,
@@ -232,8 +233,10 @@ class IllegalLengthOptionTest(BaseTest[IPAddressType]):
             else:
                 result = TestResult(self, TEST_PASS)
 
+            if not is_rst:
+                await self.send(syn_res.make_reset(self.src, self.dst))
+
         if result is not None and result.status is not TEST_PASS:
-            await self.send(syn_res.make_reset(self.src, self.dst))
             return result
 
         await asyncio.sleep(10, loop=self._loop)
@@ -255,11 +258,6 @@ class IllegalLengthOptionTest(BaseTest[IPAddressType]):
         del res_stat, hops
 
         if result is not None:
-            try:
-                if not (syn_res.flags & 0x04):
-                    await self.send(syn_res.make_reset(self.src, self.dst))
-            except NameError:
-                pass
             return result
 
         # No response to SYN with illegal option length and no modifications along the path
