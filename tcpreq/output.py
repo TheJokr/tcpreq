@@ -5,6 +5,7 @@ import time
 import json
 import asyncio
 
+from .types import ScanHost
 from .tests import TestResult
 
 
@@ -15,7 +16,8 @@ class _BaseOutput(metaclass=ABCMeta):
         self._stream = stream
 
     @abstractmethod
-    def __call__(self, test_name: str, futures: Iterable["asyncio.Future[TestResult]"]) -> None:
+    def __call__(self, test_name: str, futures: Iterable["asyncio.Future[TestResult]"],
+                 blacklist: Iterable[ScanHost]) -> None:
         pass
 
 
@@ -24,10 +26,20 @@ class _JSONLinesOutput(_BaseOutput):
 
     __slots__ = ()
 
-    def __call__(self, test_name: str, futures: Iterable["asyncio.Future[TestResult]"]) -> None:
+    def __call__(self, test_name: str, futures: Iterable["asyncio.Future[TestResult]"],
+                 blacklist: Iterable[ScanHost]) -> None:
         tmpl: Dict = {"ip": None, "port": None, "host": None}
-        tmpl = {"test": test_name, "timestamp": None, "src": tmpl, "dst": tmpl, "isns": None,
+        tmpl = {"test": test_name, "timestamp": None, "src": tmpl, "dst": tmpl, "isns": [],
                 "status": None, "stage": None, "reason": None, "custom": None}
+
+        for host in blacklist:
+            o = tmpl.copy()
+            o["dst"] = host.raw
+            o["status"] = "BL"
+
+            json.dump(o, self._stream)
+            self._stream.write("\n")
+        self._stream.flush()
 
         for f in futures:
             o = tmpl.copy()
@@ -56,7 +68,8 @@ class _JSONLinesOutput(_BaseOutput):
         self._stream.flush()
 
 
-def _print_results(test_name: str, futures: Iterable["asyncio.Future[TestResult]"]) -> None:
+def _print_results(test_name: str, futures: Iterable["asyncio.Future[TestResult]"],
+                   blacklist: Iterable[ScanHost]) -> None:
     print(test_name, "results:")
     for f in futures:
         try:
@@ -84,7 +97,8 @@ _OUTPUT_TBL: Dict[str, Type[_BaseOutput]] = {
 }
 
 
-def get_output_module(stream: Optional[TextIO]) -> Callable[[str, Iterable["asyncio.Future[TestResult]"]], None]:
+def get_output_module(stream: Optional[TextIO]) \
+        -> Callable[[str, Iterable["asyncio.Future[TestResult]"], Iterable[ScanHost]], None]:
     if stream is None:
         return _print_results
 
