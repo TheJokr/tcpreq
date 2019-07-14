@@ -23,6 +23,7 @@ class _BaseOutput(metaclass=ABCMeta):
 
 class _JSONLinesOutput(_BaseOutput):
     _TS_FMT = "%Y-%m-%dT%H:%M:%SZ"
+    _JSON_SEPS = (",", ":")  # compress whitespace
 
     __slots__ = ()
 
@@ -37,7 +38,7 @@ class _JSONLinesOutput(_BaseOutput):
             o["dst"] = host.raw
             o["status"] = "BL"
 
-            json.dump(o, self._stream)
+            json.dump(o, self._stream, separators=self._JSON_SEPS)
             self._stream.write("\n")
         self._stream.flush()
 
@@ -63,7 +64,7 @@ class _JSONLinesOutput(_BaseOutput):
                 o["reason"] = res.reason
                 o["custom"] = res.custom
 
-            json.dump(o, self._stream)
+            json.dump(o, self._stream, separators=self._JSON_SEPS)
             self._stream.write("\n")
         self._stream.flush()
 
