@@ -27,10 +27,10 @@ class ScanHost(Generic[IPAddressType]):
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, ScanHost):
             return NotImplemented
-        return self.ip == other.ip and self.port == other.port and self.host == other.host
+        return self.ip == other.ip and self.port == other.port
 
     def __hash__(self) -> int:
-        return hash((self.ip, self.port, self.host))
+        return hash((self.ip, self.port))
 
 
 class OutgoingPacket(Generic[IPAddressType]):

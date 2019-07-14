@@ -68,25 +68,24 @@ def main() -> None:
     # Filter targets by IP version and blacklist
     ipv4_set: Set[ScanHost[IPv4Address]] = set()
     ipv6_set: Set[ScanHost[IPv6Address]] = set()
-    bl_set: Set[ScanHost] = set()
+    filtered_tgts: List[ScanHost] = []
     for tgt in itertools.chain(args.target, itertools.chain.from_iterable(args.nmap),
                                itertools.chain.from_iterable(args.zmap),
                                itertools.chain.from_iterable(args.json)):
         if isinstance(tgt.ip, IPv4Address) and ipv4_bl is not None:
-            if tgt.ip in ipv4_bl:
-                bl_set.add(tgt)
+            if tgt.ip in ipv4_bl or tgt in ipv4_set:
+                filtered_tgts.append(tgt)
             else:
                 ipv4_set.add(tgt)
         elif ipv6_bl is not None and isinstance(tgt.ip, IPv6Address):
-            if tgt.ip in ipv6_bl:
-                bl_set.add(tgt)
+            if tgt.ip in ipv6_bl or tgt in ipv6_set:
+                filtered_tgts.append(tgt)
             else:
                 ipv6_set.add(tgt)
 
     ipv4_tgts = list(ipv4_set)
     ipv6_tgts = list(ipv6_set)
-    bl_tgts = list(bl_set)
-    del ipv4_bl, ipv6_bl, ipv4_set, ipv6_set, bl_set
+    del ipv4_bl, ipv6_bl, ipv4_set, ipv6_set
     if not ipv4_tgts and not ipv6_tgts:
         parser.error("at least one valid target is required")
 
@@ -126,7 +125,7 @@ def main() -> None:
 
         print("Running", test.__name__)
         loop.run_until_complete(asyncio.wait(all_futs, loop=loop))
-        output_mod(test.__name__, all_futs, bl_tgts)
+        output_mod(test.__name__, all_futs, filtered_tgts)
         time.sleep(5)
 
 

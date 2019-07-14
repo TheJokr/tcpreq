@@ -11,7 +11,7 @@ class TestResultStatus(enum.Enum):
     UNK = enum.auto()
     FAIL = enum.auto()  # for target-related failures
     ERR = enum.auto()  # for test-related failures
-    BL = enum.auto()  # for blacklisted hosts
+    FLTR = enum.auto()  # for filtered hosts
 
 
 # Aliases for "public" TestResultStatus members

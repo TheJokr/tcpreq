@@ -17,7 +17,7 @@ class _BaseOutput(metaclass=ABCMeta):
 
     @abstractmethod
     def __call__(self, test_name: str, futures: Iterable["asyncio.Future[TestResult]"],
-                 blacklist: Iterable[ScanHost]) -> None:
+                 filtered: Iterable[ScanHost]) -> None:
         pass
 
 
@@ -28,15 +28,15 @@ class _JSONLinesOutput(_BaseOutput):
     __slots__ = ()
 
     def __call__(self, test_name: str, futures: Iterable["asyncio.Future[TestResult]"],
-                 blacklist: Iterable[ScanHost]) -> None:
+                 filtered: Iterable[ScanHost]) -> None:
         tmpl: Dict = {"ip": None, "port": None, "host": None}
         tmpl = {"test": test_name, "timestamp": None, "src": tmpl, "dst": tmpl, "isns": [],
                 "status": None, "stage": None, "reason": None, "custom": None}
 
-        for host in blacklist:
+        for host in filtered:
             o = tmpl.copy()
             o["dst"] = host.raw
-            o["status"] = "BL"
+            o["status"] = "FLTR"
 
             json.dump(o, self._stream, separators=self._JSON_SEPS)
             self._stream.write("\n")
@@ -70,7 +70,7 @@ class _JSONLinesOutput(_BaseOutput):
 
 
 def _print_results(test_name: str, futures: Iterable["asyncio.Future[TestResult]"],
-                   blacklist: Iterable[ScanHost]) -> None:
+                   filtered: Iterable[ScanHost]) -> None:
     print(test_name, "results:")
     for f in futures:
         try:
