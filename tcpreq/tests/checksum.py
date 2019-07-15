@@ -12,8 +12,8 @@ from ..tcp import Segment, check_window
 from ..tcp.checksum import calc_checksum
 
 
-# Make sure TCP TX checksum offloading is disabled
-# E.g. ethtool -K <DEVNAME> tx off on Linux
+# Make sure TCP RX/TX checksum offloading is disabled
+# E.g. ethtool -K <DEVNAME> rx off tx off on Linux
 class IncorrectChecksumTest(BaseTest[IPAddressType]):
     """Evaluate response to incorrect checksums in SYNs and after handshake."""
     __slots__ = ()

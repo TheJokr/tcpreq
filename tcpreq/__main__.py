@@ -45,7 +45,7 @@ def _select_addrs() -> Generator[AnyIPAddress, None, None]:
 
 
 # Make sure to prevent the kernel TCP stack from interfering
-# See e.g. tcpreq-nft.conf for an nfttables script
+# See e.g. tcpreq-nft.conf for an nftables script and tcpreq-ipt.rules for iptables rules
 def main() -> None:
     args = parser.parse_args()
 
