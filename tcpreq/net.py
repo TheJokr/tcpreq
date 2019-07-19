@@ -31,11 +31,17 @@ _ICMPV6_EXC_HOPLIMIT: int = getattr(socket, "ICMPV6_EXC_HOPLIMIT", 0)
 # Workaround for attributes available only on Linux
 _IS_LINUX = sys.platform == "linux"
 if _IS_LINUX:
+    # See linux/include/uapi/asm-generic/socket.h
+    _SO_RCVBUFFORCE: int = getattr(socket, "SO_RCVBUFFORCE", 33)
+
     # See linux/include/uapi/linux/icmp.h
     _ICMP_FILTER: int = getattr(socket, "ICMP_FILTER", 1)
 
     # See linux/include/uapi/linux/icmpv6.h
     _ICMPV6_FILTER: int = getattr(socket, "ICMPV6_FILTER", 1)
+else:
+    # Fall back to SO_RCVBUF
+    _SO_RCVBUFFORCE = socket.SO_RCVBUF
 
 
 class BaseTestMultiplexer(Generic[IPAddressType]):
@@ -49,6 +55,7 @@ class BaseTestMultiplexer(Generic[IPAddressType]):
         icmp_sock = socket.socket(sock_fam, socket.SOCK_RAW, icmp_proto)
         for sock in (tcp_sock, icmp_sock):
             sock.setblocking(False)
+            sock.setsockopt(socket.SOL_SOCKET, _SO_RCVBUFFORCE, 8_388_608)
             sock.bind((str(src), 0))
 
         if loop is None:
