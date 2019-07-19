@@ -68,17 +68,22 @@ def main() -> None:
     # Filter targets by IP version and blacklist
     ipv4_set: Set[ScanHost[IPv4Address]] = set()
     ipv6_set: Set[ScanHost[IPv6Address]] = set()
+    discarded_tgts: List[ScanHost] = []
     filtered_tgts: List[ScanHost] = []
     for tgt in itertools.chain(args.target, itertools.chain.from_iterable(args.nmap),
                                itertools.chain.from_iterable(args.zmap),
                                itertools.chain.from_iterable(args.json)):
-        if isinstance(tgt.ip, IPv4Address) and ipv4_bl is not None:
-            if tgt.ip in ipv4_bl or tgt in ipv4_set:
+        if isinstance(tgt.ip, IPv4Address):
+            if ipv4_bl is None:
+                discarded_tgts.append(tgt)
+            elif tgt.ip in ipv4_bl or tgt in ipv4_set:
                 filtered_tgts.append(tgt)
             else:
                 ipv4_set.add(tgt)
-        elif ipv6_bl is not None and isinstance(tgt.ip, IPv6Address):
-            if tgt.ip in ipv6_bl or tgt in ipv6_set:
+        elif isinstance(tgt.ip, IPv6Address):
+            if ipv6_bl is None:
+                discarded_tgts.append(tgt)
+            elif tgt.ip in ipv6_bl or tgt in ipv6_set:
                 filtered_tgts.append(tgt)
             else:
                 ipv6_set.add(tgt)
@@ -125,7 +130,7 @@ def main() -> None:
 
         print("Running", test.__name__)
         loop.run_until_complete(asyncio.wait(all_futs, loop=loop))
-        output_mod(test.__name__, all_futs, filtered_tgts)
+        output_mod(test.__name__, all_futs, discarded_tgts, filtered_tgts)
         time.sleep(5)
 
 
