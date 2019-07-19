@@ -44,7 +44,11 @@ def _parse_nmap_xml(fpath: str) -> Generator[ScanHost, None, None]:
             ip_addr = ipaddress.IPv4Address(addr.get("addr"))
 
         for port in host.iterfind('./ports/port[@protocol="tcp"]/state[@state="open"]/..'):
-            yield ScanHost(ip_addr, int(port.get("portid")))
+            port_val = port.get("portid")
+            if port_val is None:
+                raise ValueError("Missing port number")
+
+            yield ScanHost(ip_addr, int(port_val))
 
 
 def _parse_zmap_csv(fpath: str) -> Generator[ScanHost, None, None]:
