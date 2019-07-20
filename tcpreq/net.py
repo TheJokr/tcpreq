@@ -222,10 +222,11 @@ class IPv4TestMultiplexer(BaseTestMultiplexer[IPv4Address]):
                     if dlen < 20 or data[9] != socket.IPPROTO_TCP:
                         continue
                     head_len = (data[0] << 2) & 0b00111100  # == (data[0] & 0x0f) * 4
+                    total_len = int.from_bytes(data[2:4], "big")
                     if dlen < head_len:
                         continue
 
-                    self._handle_icmp_time_exceeded(data[12:16], data[16:20], data[head_len:],
+                    self._handle_icmp_time_exceeded(data[12:16], data[16:20], data[head_len:total_len],
                                                     hops=self._recover_ttl(data, head_len))
         except BlockingIOError:
             pass
@@ -357,10 +358,14 @@ class IPv6TestMultiplexer(BaseTestMultiplexer[IPv6Address]):
                     if dlen < 48:
                         continue
 
+                    total_len = data[4] or None
+                    if total_len is not None:
+                        total_len += 8
+
                     next_head = data[14]
                     src_addr = data[16:32]
                     dst_addr = data[32:48]
-                    data = data[48:]
+                    data = data[48:total_len]
 
                     quote = self._walk_header_chain(next_head, data)
                     if quote is None:
