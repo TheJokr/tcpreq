@@ -23,6 +23,8 @@ class RSTACKTest(BaseTest[IPAddressType]):
         rstack_seg = syn_res.make_reply(self.src, self.dst, window=0, seq=-1, ack=True, rst=True)
         await self.send(rstack_seg)
 
+        await asyncio.sleep(10, loop=self._loop)
+        self.recv_queue = asyncio.Queue(loop=self._loop)
         try:
             # TODO: change timeout?
             rstack_res = await self.receive(timeout=60)
