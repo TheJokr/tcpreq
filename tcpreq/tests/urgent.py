@@ -72,11 +72,13 @@ class UrgentPointerTest(BaseTest[IPAddressType]):
             return TestResult(self, TEST_FAIL, 1,
                               "Timeout after handshake and request with urgent pointer")
 
-        if not (ack_res.flags & 0x04):
+        if ack_res.flags & 0x04:
+            result = TestResult(self, TEST_FAIL, 1, "RST in reply to request with urgent pointer")
+        else:
             await self.send(Segment(self.src, self.dst, seq=cur_seq, window=0, rst=True))
+            result = TestResult(self, TEST_PASS)
         await asyncio.sleep(10, loop=self._loop)
 
-        result = TestResult(self, TEST_PASS)
         res_stat = 0
         hops = (i for i in (self._check_quote(*item, up=chck_up) for item in self.quote_queue)
                 if i is not None)
