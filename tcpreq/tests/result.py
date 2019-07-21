@@ -13,6 +13,7 @@ class TestResultStatus(enum.Enum):
     ERR = enum.auto()  # for test-related failures
     DISC = enum.auto()  # for discarded hosts
     FLTR = enum.auto()  # for filtered hosts
+    DEAD = enum.auto()  # for unresponsive hosts
 
 
 # Aliases for "public" TestResultStatus members

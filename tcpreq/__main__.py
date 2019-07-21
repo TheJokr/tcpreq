@@ -1,4 +1,4 @@
-from typing import Type, Sequence, List, Set, Optional, Generator
+from typing import Type, Iterable, Sequence, List, Set, Optional, Generator
 import time
 import random
 import itertools
@@ -14,6 +14,8 @@ from .output import get_output_module
 from .limiter import TokenBucket
 from .net import IPv4TestMultiplexer, IPv6TestMultiplexer
 from .tests import BaseTest, DEFAULT_TESTS, TestResult
+from .tests.result import TestResultStatus
+from .tests.handshake import HandshakeTest
 
 # Use a random ephemeral port as source
 _BASE_PORT = random.randint(49152, 61000)
@@ -70,6 +72,7 @@ def main() -> None:
     ipv6_set: Set[ScanHost[IPv6Address]] = set()
     discarded_tgts: List[ScanHost] = []
     filtered_tgts: List[ScanHost] = []
+    dead_res: List[TestResult] = []
     for tgt in itertools.chain(args.target, itertools.chain.from_iterable(args.nmap),
                                itertools.chain.from_iterable(args.zmap),
                                itertools.chain.from_iterable(args.json)):
@@ -104,7 +107,7 @@ def main() -> None:
 
     # Run tests sequentially
     output_mod = get_output_module(args.output)
-    active_tests: Sequence[Type[BaseTest]] = args.test or DEFAULT_TESTS
+    active_tests: Iterable[Type[BaseTest]] = itertools.chain((HandshakeTest,), args.test or DEFAULT_TESTS)
     for idx, test in enumerate(active_tests):
         all_futs: List["asyncio.Future[TestResult]"] = []
         random.shuffle(ipv4_tgts)
@@ -128,9 +131,31 @@ def main() -> None:
             fut.add_done_callback(lambda f, t=t: ipv6_plex.unregister_test(t))  # type: ignore
             all_futs.append(fut)
 
-        print("Running", test.__name__)
-        loop.run_until_complete(asyncio.wait(all_futs, loop=loop))
-        output_mod(test.__name__, all_futs, discarded_tgts, filtered_tgts)
+        if idx == 0:
+            loop.run_until_complete(asyncio.wait(all_futs, loop=loop))
+            ipv4_futs = all_futs[:len(ipv4_tgts)]
+            ipv6_futs = all_futs[len(ipv4_tgts):]
+
+            # Filter targets by responsiveness (HandshakeTest)
+            for futs, tgts in ((ipv4_futs, ipv4_tgts), (ipv6_futs, ipv6_tgts)):
+                # Emulate reversed(enumerate(...)) by zipping a range with the list
+                for idx, f in zip(reversed(range(len(futs))), reversed(futs)):
+                    try:
+                        res = f.result()
+                    except asyncio.CancelledError:
+                        continue
+                    if res.status is TestResultStatus.PASS:
+                        continue
+
+                    del tgts[idx]  # type: ignore
+                    res.status = TestResultStatus.DEAD
+                    res.stage = None
+                    dead_res.append(res)
+            del ipv4_futs, ipv6_futs, futs, tgts
+        else:
+            print("Running", test.__name__)
+            loop.run_until_complete(asyncio.wait(all_futs, loop=loop))
+            output_mod(test.__name__, all_futs, discarded_tgts, filtered_tgts, dead_res)
         time.sleep(5)
 
 
