@@ -14,27 +14,7 @@ class ReservedFlagsTest(BaseTest[IPAddressType]):
     __slots__ = ()
 
     async def run(self) -> TestResult:
-        # Test responsiveness without any options
         cur_seq = random.randint(0, 0xffff_ffff)
-        await self.send(Segment(self.src, self.dst, seq=cur_seq, window=1024, syn=True))
-
-        # TODO: change timeout?
-        syn_res = await self._synchronize(cur_seq, timeout=30, test_stage=1)
-        if isinstance(syn_res, TestResult):
-            return syn_res
-
-        await self.send(syn_res.make_reset(self.src, self.dst))
-        del syn_res
-
-        await asyncio.sleep(10, loop=self._loop)
-        self.recv_queue = asyncio.Queue(loop=self._loop)
-        await asyncio.sleep(10, loop=self._loop)
-        if not self.recv_queue.empty():
-            # TODO: retransmit RST?
-            return TestResult(self, TEST_UNK, 1, "RST ignored")
-
-        # Test responsiveness with reserved flag set
-        cur_seq = (cur_seq + 2048) % 0x1_0000_000
         futs: List[Awaitable[None]] = []
         for ttl in range(1, self._HOP_LIMIT + 1):
             futs.append(self.send(
@@ -45,7 +25,7 @@ class ReservedFlagsTest(BaseTest[IPAddressType]):
         del futs
 
         # TODO: change timeout?
-        syn_res = await self._synchronize(cur_seq, timeout=30, test_stage=2)
+        syn_res = await self._synchronize(cur_seq, timeout=30, test_stage=1)
         if isinstance(syn_res, TestResult):
             syn_res.status = TEST_FAIL
             syn_res.reason += " with reserved flag"  # type: ignore
@@ -53,7 +33,7 @@ class ReservedFlagsTest(BaseTest[IPAddressType]):
         elif syn_res._raw[12] & 0b1110:
             await self.send(syn_res.make_reset(self.src, self.dst))
             return TestResult(
-                self, TEST_FAIL, 2,
+                self, TEST_FAIL, 1,
                 "Reserved flags not zeroed in reply to SYN during handshake with reserved flag"
             )
 
@@ -70,7 +50,7 @@ class ReservedFlagsTest(BaseTest[IPAddressType]):
             reason = "Middlebox interference detected"
             reason += " at or before hop {0}" if mbox_hop > 0 else " at unknown hop"
             reason += " (reserved flags reset)"
-            result = TestResult(self, TEST_UNK, 2, reason.format(mbox_hop))
+            result = TestResult(self, TEST_UNK, 1, reason.format(mbox_hop))
 
             if mbox_hop > 0:
                 break
@@ -97,11 +77,11 @@ class ReservedFlagsTest(BaseTest[IPAddressType]):
             if (ack_res.flags == syn_res.flags and ack_res.seq == syn_res.seq and
                     ack_res.ack_seq == syn_res.ack_seq):
                 # Sent ACK acknowledges SYN-ACK already
-                result = TestResult(self, TEST_FAIL, 2, "ACK with reserved flag ignored")
+                result = TestResult(self, TEST_FAIL, 1, "ACK with reserved flag ignored")
             elif ack_res.flags & 0x04:
-                return TestResult(self, TEST_FAIL, 2, "RST in reply to ACK with reserved flag")
+                return TestResult(self, TEST_FAIL, 1, "RST in reply to ACK with reserved flag")
             elif ack_res._raw[12] & 0b1110:
-                result = TestResult(self, TEST_FAIL, 2,
+                result = TestResult(self, TEST_FAIL, 1,
                                     "Reserved flags not zeroed in reply to ACK with reserved flag")
             else:
                 result = TestResult(self, TEST_PASS)
