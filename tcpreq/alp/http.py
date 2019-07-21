@@ -2,10 +2,11 @@ from typing import ClassVar, List, Tuple
 from urllib.parse import quote as http_quote
 
 from .base import BaseProtocol
+from ..types import IPAddressType
 
 
 # Version 1.1 only
-class HTTPProtocol(BaseProtocol):
+class HTTPProtocol(BaseProtocol[IPAddressType]):
     ports: ClassVar[Tuple[int, ...]] = (80,)
     _TYPES: ClassVar[List[bytes]] = [
         b"*/*; q=0.300", b"text/html; q=0.999", b"application/xhtml+xml; q=1.000",

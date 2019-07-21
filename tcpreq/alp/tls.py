@@ -5,7 +5,7 @@ from .base import BaseProtocol
 from ..types import IPAddressType, ScanHost
 
 
-class TLSProtocol(BaseProtocol):
+class TLSProtocol(BaseProtocol[IPAddressType]):
     # HTTPS, SMTPS, NNTPS, LDAPS, DNS over TLS, FTPS (data), FTPS (control), Telnet over TLS
     # IMAPS, POP3S, XMPP over TLS (client-server), XMPP over TLS (server-server), IRC over TLS
     ports: ClassVar[Tuple[int, ...]] = (443, 465, 563, 636, 853, 989, 990, 992,
@@ -19,7 +19,7 @@ class TLSProtocol(BaseProtocol):
     __slots__ = ("_in_bio", "_out_bio", "_ssl")
 
     def __init__(self, src: ScanHost[IPAddressType], dst: ScanHost[IPAddressType]) -> None:
-        super(TLSProtocol, self).__init__(src, dst)
+        super(TLSProtocol, self).__init__(src, dst)  # type: ignore
 
         self._in_bio = ssl.MemoryBIO()
         self._out_bio = ssl.MemoryBIO()

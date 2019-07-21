@@ -83,7 +83,7 @@ def decode_ttl(quote: bytes, ttl_guess: int, hop_limit: int, *, win: bool = True
             return candidates[1][0]
         elif diff > 0:
             return candidates[0][0]
-    elif clen == 0:  # clen == 0
+    elif clen == 0:
         # Fall back to lower layer guess
         return ttl_guess
 
