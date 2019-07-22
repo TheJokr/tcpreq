@@ -9,7 +9,7 @@ def encode_ttl(ttl: int, *, win: bool = True, ack: bool = True, up: bool = True,
                opts: bool = True) -> Dict[str, Union[int, Sequence[BaseOption]]]:
     kwargs: Dict[str, Union[int, Sequence[BaseOption]]] = {}
 
-    # Encoding is similar to IPv4 header
+    # Encoding is similar to IPv4 ID field
     enc_16 = (ttl << 11) | (ttl << 5) | ttl
     if win:
         kwargs["window"] = enc_16
@@ -18,6 +18,7 @@ def encode_ttl(ttl: int, *, win: bool = True, ack: bool = True, up: bool = True,
     if up:
         kwargs["up"] = enc_16
     if opts:
+        # The index of the EOOL option specifies the TTL
         kwargs["options"] = (noop_option,) * ttl + (end_of_options,)
 
     return kwargs
@@ -31,25 +32,23 @@ def decode_ttl(quote: bytes, ttl_guess: int, hop_limit: int, *, win: bool = True
         return ttl_guess
 
     if opts and qlen >= 24:
-        div = quote[12] >> 4
-        head_len = div << 2
-
-        # Try to recover TTL from DO+options (see IPv4TestMultiplexer._recover_ttl)
-        if div > 5 and qlen >= head_len:
-            div -= 6
-            mod = None
+        # Try to recover TTL from DO+options
+        head_len = (quote[12] >> 2) & 0b00111100
+        if head_len > 20 and qlen >= head_len:
+            ttl = None
             expected = 0x01
+
             for idx, opt in enumerate(quote[20:head_len]):
                 if opt != expected:
-                    if mod is None and opt == 0x00:
-                        mod = idx % 4
+                    if ttl is None and opt == 0x00:
+                        ttl = idx
                         expected = 0x00
                     else:
-                        mod = None
+                        ttl = None
                         break
 
-            if mod is not None:
-                return 4 * div + mod
+            if ttl is not None:
+                return ttl
 
     ttl_count: CounterType[int] = Counter()
     if ack:

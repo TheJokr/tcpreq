@@ -233,39 +233,16 @@ class IPv4TestMultiplexer(BaseTestMultiplexer[IPv4Address]):
 
     @staticmethod
     def _recover_ttl(data: bytes, head_len: int) -> int:
-        # TTL is initially unknown
-        ttl = 0
-
         # Parse ID field
         enc = int.from_bytes(data[4:6], "big")
         val, cnt = Counter((enc >> i) & 0x1f for i in (11, 5, 0)).most_common(1)[0]
-        if cnt >= 3:
-            # Random chance: 2^6 in 2^16 <=> 1 in 1024
+        if cnt >= 2:
+            # Random chance (3): 2^6 in 2^16 <=> 1 in 1024
+            # Random chance (2): 3 * (2^11 - 2^6) in 2^16  <=> 1 in ~11
             return val
-        elif cnt == 2:
-            # Random chance: 3 * (2^11 - 2^6) in 2^16  <=> 1 in ~11
-            ttl = cnt
 
-        # Parse IHL+options
-        div = (data[0] & 0x0f) - 6
-        if div >= 0:
-            # Options must be present
-            mod = None
-            expected = 0x01
-            for idx, opt in enumerate(data[20:head_len]):
-                if opt != expected:
-                    if mod is None and opt == 0x00:
-                        mod = idx % 4
-                        expected = 0x00
-                    else:
-                        mod = None
-                        break
-
-            if mod is not None:
-                # IHL+options overwrites ID field due to its very specific structure
-                ttl = 4 * div + mod
-
-        return ttl
+        # Fallback for unknown TTL
+        return 0
 
     def _handle_write(self) -> None:
         # Send segment dequeued last during previous invocation if present
@@ -292,16 +269,6 @@ class IPv4TestMultiplexer(BaseTestMultiplexer[IPv4Address]):
                 if item.ttl is not None:
                     # Set TTL
                     data[8] = item.ttl
-
-                    # Encode TTL into IHL field + options.
-                    # The position of the EOOL option specifies the remainder (0-3).
-                    pad_rows, eool_idx = divmod(item.ttl, 4)
-                    pad_rows += 1  # pad_rows must be at least 1 to embed EOOL
-                    data[0] = 0x40 | (pad_rows + 5)
-
-                    opts = bytearray(itertools.repeat(0x01, pad_rows * 4))
-                    opts[-4 + eool_idx:] = itertools.repeat(0x00, 4 - eool_idx)
-                    data[20:20] = opts
 
                     # Encode TTL into ID field (bits 15-11, 9-5, and 4-0)
                     enc = item.ttl
