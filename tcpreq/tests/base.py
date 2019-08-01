@@ -11,7 +11,7 @@ from ..tcp import Segment
 
 class BaseTest(Generic[IPAddressType]):
     """Abstract base class for all tests."""
-    _HOP_LIMIT: ClassVar[int] = 20
+    _HOP_LIMIT: ClassVar[int] = 30
 
     # Make sure _HOP_LIMIT fits into 5 bits (to save it in the IPv4 ID field 3 times).
     assert math.floor(math.log2(_HOP_LIMIT) + 1) <= 5
