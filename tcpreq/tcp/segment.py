@@ -7,6 +7,10 @@ from .checksum import calc_checksum
 from ..types import IPAddressType, ScanHost
 
 
+class ChecksumError(ValueError):
+    pass
+
+
 # Segments are immutable
 class Segment(object):
     # src_port, dst_port, seq, ack_seq, data offset/reserved bits, flags, window, checksum, up
@@ -99,7 +103,7 @@ class Segment(object):
         checksum = calc_checksum(src_addr, dst_addr, data)
         data[16:18] = check_old
         if checksum != check_old:
-            raise ValueError("Checksum mismatch")
+            raise ChecksumError("Checksum mismatch")
 
         opt_data = data[20:head_len]
         options = tuple(parse_options(opt_data))

@@ -8,7 +8,7 @@ from .base import BaseTest
 from .result import TestResult, TEST_PASS, TEST_UNK, TEST_FAIL
 from .ttl_coding import encode_ttl, decode_ttl
 from ..types import IPAddressType
-from ..tcp import Segment, check_window
+from ..tcp import Segment, ChecksumError, check_window
 from ..tcp.checksum import calc_checksum
 
 
@@ -30,9 +30,11 @@ class IncorrectChecksumTest(BaseTest[IPAddressType]):
 
             try:
                 seg = Segment.from_bytes(self.dst.ip.packed, self.src.ip.packed, data)
-            except ValueError as e:
-                if str(e) == "Checksum mismatch":
-                    return None
+            except ChecksumError:
+                return None
+            except ValueError:
+                # Discard invalid segments silently and retry
+                pass
             else:
                 if seg.flags & 0x02:
                     self._isns.append((time.monotonic(), seg.seq))

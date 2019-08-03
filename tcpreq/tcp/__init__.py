@@ -1,4 +1,4 @@
-from .segment import Segment
+from .segment import Segment, ChecksumError
 from .options import end_of_options, noop as noop_option, MSSOption
 
 
