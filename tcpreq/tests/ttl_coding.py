@@ -34,7 +34,7 @@ def decode_ttl(quote: bytes, ttl_guess: int, hop_limit: int, *, win: bool = True
     if opts and qlen >= 24:
         # Try to recover TTL from DO+options
         head_len = (quote[12] >> 2) & 0b00111100
-        if head_len > 20 and qlen >= head_len:
+        if 20 < head_len <= qlen:
             ttl = None
             expected = 0x01
 

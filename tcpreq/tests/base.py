@@ -16,8 +16,8 @@ class BaseTest(Generic[IPAddressType]):
 
     # Make sure _HOP_LIMIT fits into 5 bits (to save it in the IPv4 ID field 3 times).
     assert math.floor(math.log2(_HOP_LIMIT) + 1) <= 5
-    # Make sure _HOP_LIMIT can be encoded into IHL+options (39 possible non-zero values).
-    assert _HOP_LIMIT <= 39
+    # Make sure _HOP_LIMIT can be encoded into DO+options (39 possible non-zero values).
+    assert 1 <= _HOP_LIMIT <= 39
 
     __slots__ = ("src", "dst", "_isns", "recv_queue", "quote_queue", "send_queue", "_loop")
 

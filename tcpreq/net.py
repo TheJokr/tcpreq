@@ -1,7 +1,6 @@
 from abc import abstractmethod
 from typing import Generic, ClassVar, Dict, List, Tuple, Deque, Optional
 import sys
-import itertools
 from collections import Counter, deque
 from ipaddress import IPv4Address, IPv6Address
 import socket
@@ -227,12 +226,12 @@ class IPv4TestMultiplexer(BaseTestMultiplexer[IPv4Address]):
                         continue
 
                     self._handle_icmp_time_exceeded(data[12:16], data[16:20], data[head_len:total_len],
-                                                    hops=self._recover_ttl(data, head_len))
+                                                    hops=self._recover_ttl(data))
         except BlockingIOError:
             pass
 
     @staticmethod
-    def _recover_ttl(data: bytes, head_len: int) -> int:
+    def _recover_ttl(data: bytes) -> int:
         # Parse ID field
         enc = int.from_bytes(data[4:6], "big")
         val, cnt = Counter((enc >> i) & 0x1f for i in (11, 5, 0)).most_common(1)[0]
