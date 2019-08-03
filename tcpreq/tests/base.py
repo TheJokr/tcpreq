@@ -2,9 +2,10 @@ from abc import abstractmethod
 from typing import Generic, ClassVar, Awaitable, List, Tuple, Deque, Union, Optional
 import time
 import math
+import random
 import asyncio
 
-from .result import TestResult, TEST_UNK, TEST_FAIL
+from .result import TestResult, TestResultStatus, TEST_UNK, TEST_FAIL
 from ..types import IPAddressType, ScanHost, OutgoingPacket
 from ..tcp import Segment
 
@@ -81,6 +82,35 @@ class BaseTest(Generic[IPAddressType]):
         # Reset connection to be sure
         await self.send(syn_res.make_reset(self.src, self.dst))
         return result
+
+    # Verify reachability once per test (because src port changes)
+    async def run_with_reachability(self) -> TestResult:
+        cur_seq = random.randint(0, 0xffff_ffff)
+        await self.send(Segment(self.src, self.dst, seq=cur_seq, window=30720, syn=True))
+
+        # TODO: change timeout?
+        syn_res = await self._synchronize(cur_seq, timeout=60, test_stage=0)
+        if isinstance(syn_res, TestResult):
+            syn_res.status = TestResultStatus.DEAD
+            syn_res.stage = None
+            return syn_res
+
+        await self.send(syn_res.make_reply(self.src, self.dst, window=30720, ack=True))
+
+        # Try closing the connection up to 3 times
+        for _ in range(3):
+            await self.send(syn_res.make_reset(self.src, self.dst))
+            await asyncio.sleep(5, loop=self._loop)
+            self.recv_queue = asyncio.Queue(loop=self._loop)
+
+            try:
+                await self.receive(timeout=10)
+            except asyncio.TimeoutError:
+                break
+        else:
+            return TestResult(self, TestResultStatus.DEAD, None, "RST ignored")
+
+        return await self.run()
 
     @abstractmethod
     async def run(self) -> TestResult:

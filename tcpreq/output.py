@@ -17,8 +17,7 @@ class _BaseOutput(metaclass=ABCMeta):
 
     @abstractmethod
     def __call__(self, test_name: str, futures: Iterable["asyncio.Future[TestResult]"],
-                 discarded: Iterable[ScanHost], filtered: Iterable[ScanHost],
-                 dead: Iterable[TestResult]) -> None:
+                 discarded: Iterable[ScanHost], filtered: Iterable[ScanHost]) -> None:
         pass
 
 
@@ -29,8 +28,7 @@ class _JSONLinesOutput(_BaseOutput):
     __slots__ = ()
 
     def __call__(self, test_name: str, futures: Iterable["asyncio.Future[TestResult]"],
-                 discarded: Iterable[ScanHost], filtered: Iterable[ScanHost],
-                 dead: Iterable[TestResult]) -> None:
+                 discarded: Iterable[ScanHost], filtered: Iterable[ScanHost]) -> None:
         tmpl: Dict = {"ip": None, "port": None, "host": None}
         tmpl = {"test": test_name, "timestamp": None, "src": tmpl, "dst": tmpl, "isns": [],
                 "status": None, "stage": None, "reason": None, "custom": None}
@@ -44,21 +42,6 @@ class _JSONLinesOutput(_BaseOutput):
                 json.dump(o, self._stream, separators=self._JSON_SEPS)
                 self._stream.write("\n")
             self._stream.flush()
-
-        for res in dead:
-            o = tmpl.copy()
-            o["timestamp"] = time.strftime(self._TS_FMT, time.gmtime(res.time))
-            o["src"] = res.src.raw
-            o["dst"] = res.dst.raw
-            o["isns"] = res.isns
-            o["status"] = res.status.name
-            o["stage"] = res.stage
-            o["reason"] = res.reason
-            o["custom"] = res.custom
-
-            json.dump(o, self._stream, separators=self._JSON_SEPS)
-            self._stream.write("\n")
-        self._stream.flush()
 
         for f in futures:
             o = tmpl.copy()
@@ -88,8 +71,7 @@ class _JSONLinesOutput(_BaseOutput):
 
 
 def _print_results(test_name: str, futures: Iterable["asyncio.Future[TestResult]"],
-                   discarded: Iterable[ScanHost], filtered: Iterable[ScanHost],
-                   dead: Iterable[TestResult]) -> None:
+                   discarded: Iterable[ScanHost], filtered: Iterable[ScanHost]) -> None:
     print(test_name, "results:")
     for f in futures:
         try:
@@ -118,8 +100,7 @@ _OUTPUT_TBL: Dict[str, Type[_BaseOutput]] = {
 
 
 def get_output_module(stream: Optional[TextIO]) -> Callable[
-    [str, Iterable["asyncio.Future[TestResult]"], Iterable[ScanHost],
-     Iterable[ScanHost], Iterable[TestResult]], None
+    [str, Iterable["asyncio.Future[TestResult]"], Iterable[ScanHost], Iterable[ScanHost]], None
 ]:
     if stream is None:
         return _print_results
