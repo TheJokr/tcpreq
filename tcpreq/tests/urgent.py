@@ -59,7 +59,7 @@ class UrgentPointerTest(BaseTest[IPAddressType]):
             futs.append(self.send(syn_res.make_reply(
                 self.src, self.dst, seq=cur_seq, window=4096,
                 urg=True, ack=True, up=req_len, payload=chunks[idx]
-            )))
+            ), ttl=self._HOP_LIMIT))
         await asyncio.wait(futs, loop=self._loop)
         del futs
 

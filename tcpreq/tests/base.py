@@ -86,7 +86,8 @@ class BaseTest(Generic[IPAddressType]):
     # Verify reachability once per test (because src port changes)
     async def run_with_reachability(self) -> TestResult:
         cur_seq = random.randint(0, 0xffff_ffff)
-        await self.send(Segment(self.src, self.dst, seq=cur_seq, window=30720, syn=True))
+        await self.send(Segment(self.src, self.dst, seq=cur_seq, window=30720, syn=True),
+                        ttl=self._HOP_LIMIT)
 
         # TODO: change timeout?
         syn_res = await self._synchronize(cur_seq, timeout=60, test_stage=0)
