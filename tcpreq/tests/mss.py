@@ -34,13 +34,20 @@ class MSSSupportTest(BaseTest[IPAddressType]):
                         options=opts, **encode_ttl(ttl, win=False, ack=True, up=True, opts=False)),
                 ttl=ttl
             ))
-        del opts
         await asyncio.wait(futs, loop=self._loop)
         del futs
 
         # TODO: change timeout?
         syn_res = await self._synchronize(cur_seq, timeout=30, test_stage=1)
+        if isinstance(syn_res, TestResult) and syn_res.status is TEST_UNK:
+            # Retry synchronization without encoding/segment burst
+            await self.send(Segment(self.src, self.dst, seq=cur_seq,
+                                    window=0xffff, syn=True, options=opts))
+            syn_res = await self._synchronize(cur_seq, timeout=30, test_stage=1)
+        del opts
         if isinstance(syn_res, TestResult):
+            syn_res.status = TEST_FAIL
+            syn_res.reason += " with MSS option"  # type: ignore
             return syn_res
 
         await self.send(syn_res.make_reply(self.src, self.dst, window=0xffff, ack=True))
@@ -164,6 +171,10 @@ class MissingMSSTest(BaseTest[IPAddressType]):
 
         # TODO: change timeout?
         syn_res = await self._synchronize(cur_seq, timeout=30, test_stage=1)
+        if isinstance(syn_res, TestResult) and syn_res.status is TEST_UNK:
+            # Retry synchronization without encoding/segment burst
+            await self.send(Segment(self.src, self.dst, seq=cur_seq, window=0xffff, syn=True))
+            syn_res = await self._synchronize(cur_seq, timeout=30, test_stage=1)
         if isinstance(syn_res, TestResult):
             return syn_res
 

@@ -24,12 +24,17 @@ class OptionSupportTest(BaseTest[IPAddressType]):
                         **encode_ttl(ttl, win=True, ack=True, up=True, opts=False)),
                 ttl=ttl
             ))
-        del opts
         await asyncio.wait(futs, loop=self._loop)
         del futs
 
         # TODO: change timeout?
         syn_res = await self._synchronize(cur_seq, timeout=30, test_stage=1)
+        if isinstance(syn_res, TestResult) and syn_res.status is TEST_UNK:
+            # Retry synchronization without encoding/segment burst
+            await self.send(Segment(self.src, self.dst, seq=cur_seq,
+                                    window=4096, syn=True, options=opts))
+            syn_res = await self._synchronize(cur_seq, timeout=30, test_stage=1)
+        del opts
         if isinstance(syn_res, TestResult):
             syn_res.status = TEST_FAIL
             syn_res.reason += " with options"  # type: ignore
@@ -98,12 +103,17 @@ class UnknownOptionTest(BaseTest[IPAddressType]):
                         **encode_ttl(ttl, win=True, ack=True, up=True, opts=False)),
                 ttl=ttl
             ))
-        del opts
         await asyncio.wait(futs, loop=self._loop)
         del futs
 
         # TODO: change timeout?
         syn_res = await self._synchronize(cur_seq, timeout=30, test_stage=1)
+        if isinstance(syn_res, TestResult) and syn_res.status is TEST_UNK:
+            # Retry synchronization without encoding/segment burst
+            await self.send(Segment(self.src, self.dst, seq=cur_seq,
+                                    window=4096, syn=True, options=opts))
+            syn_res = await self._synchronize(cur_seq, timeout=30, test_stage=1)
+        del opts
         if isinstance(syn_res, TestResult):
             syn_res.status = TEST_FAIL
             syn_res.reason += " with unknown option"  # type: ignore

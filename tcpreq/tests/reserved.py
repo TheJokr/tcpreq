@@ -26,6 +26,11 @@ class ReservedFlagsTest(BaseTest[IPAddressType]):
 
         # TODO: change timeout?
         syn_res = await self._synchronize(cur_seq, timeout=30, test_stage=1)
+        if isinstance(syn_res, TestResult) and syn_res.status is TEST_UNK:
+            # Retry synchronization without encoding/segment burst
+            await self.send(Segment(self.src, self.dst, seq=cur_seq,
+                                    window=4096, rsrvd=0b0100, syn=True))
+            syn_res = await self._synchronize(cur_seq, timeout=30, test_stage=1)
         if isinstance(syn_res, TestResult):
             syn_res.status = TEST_FAIL
             syn_res.reason += " with reserved flag"  # type: ignore
