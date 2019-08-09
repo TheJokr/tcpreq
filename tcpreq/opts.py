@@ -1,4 +1,4 @@
-from typing import Type, Generator
+from typing import Generator
 import argparse
 from urllib.parse import urlparse
 import ipaddress
@@ -7,7 +7,6 @@ import json
 import csv
 
 from .types import AnyIPAddress, AnyIPNetwork, ScanHost
-from . import tests
 
 _INT_MULTS = {"k": 10**3, "m": 10**6, "g": 10**9}
 
@@ -90,17 +89,6 @@ def _parse_blacklist(fpath: str) -> Generator[AnyIPNetwork, None, None]:
             pass
 
 
-def _parse_test(value: str) -> Type[tests.BaseTest]:
-    try:
-        cls = getattr(tests, value)
-        if issubclass(cls, tests.BaseTest):
-            return cls  # type: ignore
-        else:
-            raise ValueError("'{}' is not a subclass of BaseTest".format(value))
-    except AttributeError as e:
-        raise ValueError(str(e)) from e
-
-
 parser = argparse.ArgumentParser(
     prog=__package__, description="Perform a variety of tests on remote TCP hosts",
     epilog="Use @file to include a file's content as if it was part of the command line",
@@ -114,9 +102,9 @@ parser.add_argument("-B", "--bind", action="append", type=ipaddress.ip_address, 
                          "Only the first address of each type will be used.")
 parser.add_argument("-r", "--rate", default=10_000, type=_parse_suffixed_int, metavar="pps",
                     help="Send rate in packets per second. Supports suffixes K, M, and G.")
-parser.add_argument("-T", "--test", action="append", type=_parse_test, metavar="TestClass",
-                    help="A test to perform (subclass of tcpreq.tests.BaseTest). "
-                         "May be specified multiple times.")
+parser.add_argument("-T", "--tests", nargs="+", metavar="TestClass",
+                    help="TestClass is a test to perform (subclass of tcpreq.tests.BaseTest) or *. "
+                         "Either may be prefixed with ! to remove it from the selection.")
 parser.add_argument("-o", "--output", type=argparse.FileType("w", encoding="utf-8"), metavar="results.json",
                     help="Output file to write to. File extension determines format.")
 parser.add_argument("-b", "--blacklist", action="append", default=[], type=_parse_blacklist,

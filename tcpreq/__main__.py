@@ -13,7 +13,7 @@ from .opts import parser
 from .output import get_output_module
 from .limiter import TokenBucket
 from .net import IPv4TestMultiplexer, IPv6TestMultiplexer
-from .tests import BaseTest, DEFAULT_TESTS, TestResult
+from .tests import BaseTest, parse_test_list, TestResult
 
 # Use a random ephemeral port as source
 _BASE_PORT = random.randint(49152, 61000)
@@ -103,8 +103,11 @@ def main() -> None:
     ipv6_plex = None if ipv6_src is None else IPv6TestMultiplexer(ipv6_src, limiter, loop=loop)
 
     # Run tests sequentially
+    try:
+        active_tests = parse_test_list(args.tests)
+    except ValueError as e:
+        parser.error(str(e))
     output_mod = get_output_module(args.output)
-    active_tests: Sequence[Type[BaseTest]] = args.test or DEFAULT_TESTS
     for idx, test in enumerate(active_tests):
         all_futs: List["asyncio.Future[TestResult]"] = []
         random.shuffle(ipv4_tgts)
