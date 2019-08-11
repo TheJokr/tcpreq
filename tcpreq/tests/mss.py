@@ -268,3 +268,12 @@ class LateOptionTest(MSSSupportTest[IPAddressType]):
     _REQ_OPTS = (MSSOption(512),)
 
     __slots__ = ()
+
+
+# Derive from MSSSupportTest to avoid code duplication
+class MultiMSSTest(MSSSupportTest[IPAddressType]):
+    """Check behavior when faced with multiple MSS options."""
+    # TODO: verify whether targets will stick to min MSS (256)
+    _SYN_OPTS = (MSSOption(512), MSSOption(256))
+
+    __slots__ = ()

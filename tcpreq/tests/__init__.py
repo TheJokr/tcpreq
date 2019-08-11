@@ -6,7 +6,7 @@ from .result import TestResult, TEST_PASS, TEST_UNK, TEST_FAIL
 from .checksum import IncorrectChecksumTest, ZeroChecksumTest
 from .rst_ack import RSTACKTest
 from .options import OptionSupportTest, UnknownOptionTest, IllegalLengthOptionTest
-from .mss import MSSSupportTest, MissingMSSTest, LateOptionTest
+from .mss import MSSSupportTest, MissingMSSTest, LateOptionTest, MultiMSSTest
 from .reserved import ReservedFlagsTest
 from .urgent import UrgentPointerTest
 
@@ -17,7 +17,7 @@ _DEFAULT_TESTS: Tuple[Type[BaseTest], ...] = (
 )
 
 _ALL_TESTS: Tuple[Type[BaseTest], ...] = _DEFAULT_TESTS + (
-    RSTACKTest, IllegalLengthOptionTest, LateOptionTest
+    RSTACKTest, IllegalLengthOptionTest, LateOptionTest, MultiMSSTest
 )
 
 
