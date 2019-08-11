@@ -1,4 +1,4 @@
-from typing import ClassVar, Awaitable, List, Union, Optional
+from typing import ClassVar, Awaitable, List, Tuple, Optional
 import random
 import asyncio
 from ipaddress import IPv4Address
@@ -16,22 +16,22 @@ class MSSSupportTest(BaseTest[IPAddressType]):
     """Verify support for the MSS option."""
     # See "Measuring the Evolution of Transport Protocols in the Internet"
     # for measurements on minimum accepted MSS values
-    _MSS_OPT: ClassVar[MSSOption] = MSSOption(256)
+    _SYN_OPTS: ClassVar[Tuple[MSSOption, ...]] = (MSSOption(256),)
+    _REQ_OPTS: ClassVar[Tuple[MSSOption, ...]] = ()
 
     __slots__ = ()
 
     # Code shared between MSSSupportTest and LateOptionTest
-    async def _setup_mss(self) -> Union[Segment, TestResult]:
+    async def run(self) -> TestResult:
         if self.dst.port not in ALP_MAP:
             return TestResult(self, TEST_UNK, 0, "Missing ALP module for port {}".format(self.dst.port))
 
         cur_seq = random.randint(0, 0xffff_ffff)
-        opts = (self._MSS_OPT,)
         futs: List[Awaitable[None]] = []
         for ttl in range(1, self._HOP_LIMIT + 1):
             futs.append(self.send(
                 Segment(self.src, self.dst, seq=cur_seq, window=0xffff, syn=True,  # type: ignore
-                        options=opts, **encode_ttl(ttl, win=False, ack=True, up=True, opts=False)),
+                        options=self._SYN_OPTS, **encode_ttl(ttl, win=False, ack=True, up=True, opts=False)),
                 ttl=ttl
             ))
         await asyncio.wait(futs, loop=self._loop)
@@ -42,9 +42,8 @@ class MSSSupportTest(BaseTest[IPAddressType]):
         if isinstance(syn_res, TestResult) and syn_res.status is TEST_UNK:
             # Retry synchronization without encoding/segment burst
             await self.send(Segment(self.src, self.dst, seq=cur_seq,
-                                    window=0xffff, syn=True, options=opts))
+                                    window=0xffff, syn=True, options=self._SYN_OPTS))
             syn_res = await self._synchronize(cur_seq, timeout=30, test_stage=1)
-        del opts
         if isinstance(syn_res, TestResult):
             syn_res.status = TEST_FAIL
             syn_res.reason += " with MSS option"  # type: ignore
@@ -78,12 +77,6 @@ class MSSSupportTest(BaseTest[IPAddressType]):
         # Clear queues (might contain additional items due to multiple SYNs reaching the target)
         self.quote_queue.clear()
         self.recv_queue = asyncio.Queue(loop=self._loop)
-        return syn_res
-
-    async def run(self) -> TestResult:
-        syn_res = await self._setup_mss()
-        if isinstance(syn_res, TestResult):
-            return syn_res
 
         # TODO: multiple flights?
         alp = ALP_MAP[self.dst.port](self.src, self.dst)
@@ -92,7 +85,9 @@ class MSSSupportTest(BaseTest[IPAddressType]):
             await self.send(syn_res.make_reset(self.src, self.dst))
             return TestResult(self, TEST_UNK, 1, "ALP data unavailable")
 
-        await self.send(syn_res.make_reply(self.src, self.dst, window=0xffff, ack=True, payload=req))
+        # Path interference check above should cover this too
+        await self.send(syn_res.make_reply(self.src, self.dst, window=0xffff, ack=True,
+                                           options=self._REQ_OPTS, payload=req))
         del req
 
         # Check received segment sizes
@@ -109,6 +104,8 @@ class MSSSupportTest(BaseTest[IPAddressType]):
                 # Silently ignore invalid segments
                 pass
             else:
+                # The only invalid way to respond to the (optional) late MSS
+                # is by processing it. This would lead to bigger segments being received
                 if len(seg) > 276:
                     result = TestResult(self, TEST_FAIL, 1, "Segment too large")
                     break
@@ -127,13 +124,18 @@ class MSSSupportTest(BaseTest[IPAddressType]):
             # Header options not included in quote
             return None
 
+        idx = 0
+        max_idx = len(self._SYN_OPTS) - 1
         found = False
         opts = bytearray(quote[20:head_len])
         try:
             for opt in parse_options(opts):
                 if isinstance(opt, MSSOption):
-                    if opt == self._MSS_OPT:
-                        found = True
+                    if not found and opt == self._SYN_OPTS[idx]:
+                        if idx == max_idx:
+                            found = True
+                        else:
+                            idx += 1
                     else:
                         found = False
                         break
@@ -263,44 +265,6 @@ class MissingMSSTest(BaseTest[IPAddressType]):
 # Derive from MSSSupportTest to avoid code duplication
 class LateOptionTest(MSSSupportTest[IPAddressType]):
     """Test response to MSS option delivered after the 3WH."""
+    _REQ_OPTS = (MSSOption(512),)
+
     __slots__ = ()
-
-    async def run(self) -> TestResult:
-        syn_res = await self._setup_mss()
-        if isinstance(syn_res, TestResult):
-            return syn_res
-
-        # TODO: multiple flights?
-        alp = ALP_MAP[self.dst.port](self.src, self.dst)
-        req = alp.pull_data(200)
-        if req is None or len(req) > 1460:
-            await self.send(syn_res.make_reset(self.src, self.dst))
-            return TestResult(self, TEST_UNK, 1, "ALP data unavailable")
-
-        # Path interference check above should cover this too
-        await self.send(syn_res.make_reply(self.src, self.dst, window=0xffff, ack=True,
-                                           options=(MSSOption(512),), payload=req))
-        del req
-
-        # Check received segment sizes
-        seg = syn_res
-        result = TestResult(self, TEST_PASS)
-        await asyncio.sleep(30, loop=self._loop)
-        while True:
-            try:
-                seg = Segment.from_bytes(self.dst.ip.packed, self.src.ip.packed,
-                                         self.recv_queue.get_nowait())
-            except asyncio.QueueEmpty:
-                break
-            except ValueError:
-                # Silently ignore invalid segments
-                pass
-            else:
-                # The only invalid way to respond to this late MSS is by processing it
-                # This would lead to bigger segments being received
-                if len(seg) > 276:
-                    result = TestResult(self, TEST_FAIL, 1, "Segment too large")
-                    break
-
-        await self.send(seg.make_reset(self.src, self.dst))
-        return result
