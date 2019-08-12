@@ -13,11 +13,11 @@ from .urgent import UrgentPointerTest
 # List of tests to perform if no explicit list of tests is given
 _DEFAULT_TESTS: Tuple[Type[BaseTest], ...] = (
     IncorrectChecksumTest, ZeroChecksumTest, OptionSupportTest, UnknownOptionTest,
-    MSSSupportTest, MissingMSSTest, ReservedFlagsTest, UrgentPointerTest
+    MSSSupportTest, MissingMSSTest, MultiMSSTest, ReservedFlagsTest, UrgentPointerTest
 )
 
 _ALL_TESTS: Tuple[Type[BaseTest], ...] = _DEFAULT_TESTS + (
-    RSTACKTest, IllegalLengthOptionTest, LateOptionTest, MultiMSSTest
+    RSTACKTest, IllegalLengthOptionTest, LateOptionTest
 )
 
 
