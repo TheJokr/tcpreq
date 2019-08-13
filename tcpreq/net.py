@@ -33,6 +33,14 @@ if _IS_LINUX:
     # See linux/include/uapi/asm-generic/socket.h
     _SO_RCVBUFFORCE: int = getattr(socket, "SO_RCVBUFFORCE", 33)
 
+    # See linux/include/uapi/linux/in.h
+    _IP_MTU_DISCOVER: int = getattr(socket, "IP_MTU_DISCOVER", 10)
+    _IP_PMTUDISC_PROBE: int = getattr(socket, "IP_PMTUDISC_PROBE", 3)
+
+    # See linux/include/uapi/linux/in6.h
+    _IPV6_MTU_DISCOVER: int = getattr(socket, "IPV6_MTU_DISCOVER", 23)
+    _IPV6_PMTUDISC_PROBE: int = getattr(socket, "IPV6_PMTUDISC_PROBE", 3)
+
     # See linux/include/uapi/linux/icmp.h
     _ICMP_FILTER: int = getattr(socket, "ICMP_FILTER", 1)
 
@@ -177,6 +185,8 @@ class IPv4TestMultiplexer(BaseTestMultiplexer[IPv4Address]):
         self._next_fut: Optional["asyncio.Future[None]"] = None
 
         if _IS_LINUX:
+            self._sock.setsockopt(socket.IPPROTO_IP, _IP_MTU_DISCOVER, _IP_PMTUDISC_PROBE)
+
             # See linux/net/ipv4/raw.c
             allow = (1 << _ICMP_TIME_EXCEEDED)
             self._icmp_sock.setsockopt(socket.IPPROTO_RAW, _ICMP_FILTER,
@@ -295,6 +305,8 @@ class IPv6TestMultiplexer(BaseTestMultiplexer[IPv6Address]):
         self._next_fut: Optional["asyncio.Future[None]"] = None
 
         if _IS_LINUX:
+            self._sock.setsockopt(_IPPROTO_IPV6, _IPV6_MTU_DISCOVER, _IPV6_PMTUDISC_PROBE)
+
             # See linux/net/ipv6/raw.c
             allow = [0] * 8
             allow[_ICMPV6_TIME_EXCEED >> 5] |= (1 << (_ICMPV6_TIME_EXCEED & 0x1f))
