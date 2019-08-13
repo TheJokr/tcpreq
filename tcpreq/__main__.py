@@ -18,6 +18,20 @@ from .tests import BaseTest, parse_test_list, TestResult
 # Use a random ephemeral port as source
 _BASE_PORT = random.randint(49152, 61000)
 
+# Illegal IPv4 destinations (includes broadcast address)
+# See https://www.iana.org/assignments/iana-ipv4-special-registry/iana-ipv4-special-registry.xhtml
+_IPV4_DISC_NETS = (
+    IPv4Network("0.0.0.0/8"), IPv4Network("192.0.0.0/24"), IPv4Network("192.0.2.0/24"),
+    IPv4Network("198.51.100.0/24"), IPv4Network("203.0.113.0/24"), IPv4Network("240.0.0.0/4"),
+    IPv4Network("255.255.255.255/32")
+)
+
+# Illegal IPv6 destinations
+# See https://www.iana.org/assignments/iana-ipv6-special-registry/iana-ipv6-special-registry.xhtml
+_IPV6_DISC_NETS = (
+    IPv6Network("::/128"), IPv6Network("2001:db8::/32"), IPv6Network("2001::/23")
+)
+
 
 def _select_addrs() -> Generator[AnyIPAddress, None, None]:
     host = socket.gethostname()
@@ -66,7 +80,6 @@ def main() -> None:
 
     # Aggregate targets from multiple sources
     # Filter targets by IP version and blacklist
-    # TODO: improve address filtering based on IANA registries
     ipv4_set: Set[ScanHost[IPv4Address]] = set()
     ipv6_set: Set[ScanHost[IPv6Address]] = set()
     discarded_tgts: List[ScanHost] = []
@@ -75,14 +88,14 @@ def main() -> None:
                                itertools.chain.from_iterable(args.zmap),
                                itertools.chain.from_iterable(args.json)):
         if isinstance(tgt.ip, IPv4Address):
-            if ipv4_bl is None or int(tgt.ip) == 0xffffffff or tgt.ip.is_multicast:
+            if ipv4_bl is None or any(tgt.ip in net for net in _IPV4_DISC_NETS) or tgt.ip.is_multicast:
                 discarded_tgts.append(tgt)
             elif tgt.ip in ipv4_bl or tgt in ipv4_set:
                 filtered_tgts.append(tgt)
             else:
                 ipv4_set.add(tgt)
         elif isinstance(tgt.ip, IPv6Address):
-            if ipv6_bl is None or tgt.ip.is_multicast:
+            if ipv6_bl is None or any(tgt.ip in net for net in _IPV6_DISC_NETS) or tgt.ip.is_multicast:
                 discarded_tgts.append(tgt)
             elif tgt.ip in ipv6_bl or tgt in ipv6_set:
                 filtered_tgts.append(tgt)
