@@ -66,6 +66,7 @@ def main() -> None:
 
     # Aggregate targets from multiple sources
     # Filter targets by IP version and blacklist
+    # TODO: improve address filtering based on IANA registries
     ipv4_set: Set[ScanHost[IPv4Address]] = set()
     ipv6_set: Set[ScanHost[IPv6Address]] = set()
     discarded_tgts: List[ScanHost] = []
@@ -74,14 +75,14 @@ def main() -> None:
                                itertools.chain.from_iterable(args.zmap),
                                itertools.chain.from_iterable(args.json)):
         if isinstance(tgt.ip, IPv4Address):
-            if ipv4_bl is None:
+            if ipv4_bl is None or int(tgt.ip) == 0xffffffff or tgt.ip.is_multicast:
                 discarded_tgts.append(tgt)
             elif tgt.ip in ipv4_bl or tgt in ipv4_set:
                 filtered_tgts.append(tgt)
             else:
                 ipv4_set.add(tgt)
         elif isinstance(tgt.ip, IPv6Address):
-            if ipv6_bl is None:
+            if ipv6_bl is None or tgt.ip.is_multicast:
                 discarded_tgts.append(tgt)
             elif tgt.ip in ipv6_bl or tgt in ipv6_set:
                 filtered_tgts.append(tgt)
