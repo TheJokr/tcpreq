@@ -16,12 +16,12 @@ class MSSSupportTest(BaseTest[IPAddressType]):
     """Verify support for the MSS option."""
     # See "Measuring the Evolution of Transport Protocols in the Internet"
     # for measurements on minimum accepted MSS values
-    _SYN_OPTS: ClassVar[Tuple[MSSOption, ...]] = (MSSOption(256),)
+    # Update: CVE-2019-11477/11478/11479 makes testing with MSS <500 bytes infeasible
+    _SYN_OPTS: ClassVar[Tuple[MSSOption, ...]] = (MSSOption(515),)
     _REQ_OPTS: ClassVar[Tuple[MSSOption, ...]] = ()
 
     __slots__ = ()
 
-    # Code shared between MSSSupportTest and LateOptionTest
     async def run(self) -> TestResult:
         if self.dst.port not in ALP_MAP:
             return TestResult(self, TEST_UNK, 0, "Missing ALP module for port {}".format(self.dst.port))
@@ -52,7 +52,7 @@ class MSSSupportTest(BaseTest[IPAddressType]):
         await self.send(syn_res.make_reply(self.src, self.dst, window=0xffff, ack=True))
         await asyncio.sleep(10, loop=self._loop)
 
-        result = None if len(syn_res) <= 276 else TestResult(self, TEST_FAIL, 1, "Segment too large")
+        result = None if len(syn_res) <= 535 else TestResult(self, TEST_FAIL, 1, "Segment too large")
         res_stat = 0
         hops = (i for i in (self._check_quote(*item) for item in self.quote_queue) if i is not None)
         for mbox_hop in hops:
@@ -80,7 +80,7 @@ class MSSSupportTest(BaseTest[IPAddressType]):
 
         # TODO: multiple flights?
         alp = ALP_MAP[self.dst.port](self.src, self.dst)
-        req = alp.pull_data(200)
+        req = alp.pull_data(400)
         if req is None or len(req) > 1460:
             await self.send(syn_res.make_reset(self.src, self.dst))
             return TestResult(self, TEST_UNK, 1, "ALP data unavailable")
@@ -106,7 +106,7 @@ class MSSSupportTest(BaseTest[IPAddressType]):
             else:
                 # The only invalid way to respond to the (optional) late MSS
                 # is by processing it. This would lead to bigger segments being received
-                if len(seg) > 276:
+                if len(seg) > 535:
                     result = TestResult(self, TEST_FAIL, 1, "Segment too large")
                     break
 
@@ -265,7 +265,7 @@ class MissingMSSTest(BaseTest[IPAddressType]):
 # Derive from MSSSupportTest to avoid code duplication
 class LateOptionTest(MSSSupportTest[IPAddressType]):
     """Test response to MSS option delivered after the 3WH."""
-    _REQ_OPTS = (MSSOption(512),)
+    _REQ_OPTS = (MSSOption(536),)
 
     __slots__ = ()
 
@@ -273,7 +273,7 @@ class LateOptionTest(MSSSupportTest[IPAddressType]):
 # Derive from MSSSupportTest to avoid code duplication
 class MultiMSSTest(MSSSupportTest[IPAddressType]):
     """Check behavior when faced with multiple MSS options."""
-    # TODO: verify whether targets will stick to min MSS (256)
-    _SYN_OPTS = (MSSOption(512), MSSOption(256))
+    # Linux, OSX, Windows 10 all use the last value seen
+    _SYN_OPTS = (MSSOption(550), MSSOption(505), MSSOption(515))
 
     __slots__ = ()
