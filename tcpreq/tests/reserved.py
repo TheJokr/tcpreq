@@ -96,7 +96,7 @@ class ReservedFlagsTest(BaseTest[IPAddressType]):
 
     def _check_quote(self, src_addr: bytes, ttl_guess: int, quote: bytes) -> Optional[int]:
         qlen = len(quote)
-        if qlen < 12:
+        if qlen < 13:
             # Reserved flags not included in quote
             return None
 
