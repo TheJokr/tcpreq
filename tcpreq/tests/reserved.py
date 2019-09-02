@@ -1,4 +1,5 @@
-from typing import Awaitable, List, Optional
+from typing import Awaitable, List, Tuple
+import operator
 import random
 import asyncio
 
@@ -47,21 +48,26 @@ class ReservedFlagsTest(BaseTest[IPAddressType]):
 
         result = None
         res_stat = 0
-        hops = (i for i in (self._check_quote(item) for item in self.quote_queue) if i is not None)
-        for mbox_hop in hops:
-            if mbox_hop == 0 and res_stat >= 1:
+        net_path: List[Tuple[int, str]] = []
+        custom_res = {"path": net_path}
+        for icmp in self.quote_queue:
+            mbox_hop = decode_ttl(icmp.quote, icmp.hops, self._HOP_LIMIT)
+            net_path.append((mbox_hop, icmp.icmp_src.compressed))
+
+            if not self._quote_modified(icmp) or (mbox_hop == 0 and res_stat >= 1):
                 continue
 
             reason = "Middlebox interference detected"
             reason += " at or before hop {0}" if mbox_hop > 0 else " at unknown hop"
             reason += " (reserved flags reset)"
-            result = TestResult(self, TEST_UNK, 1, reason.format(mbox_hop))
+            result = TestResult(self, TEST_UNK, 1, reason.format(mbox_hop), custom=custom_res)
 
             if mbox_hop > 0:
                 break
             else:
                 res_stat = 1
-        del res_stat, hops
+        del res_stat
+        net_path.sort(key=operator.itemgetter(0))
 
         if result is not None:
             await self.send(syn_res.make_reset(self.src, self.dst))
@@ -88,12 +94,17 @@ class ReservedFlagsTest(BaseTest[IPAddressType]):
                                                            rsrvd=0b0100, ack=True))
                     else:
                         # Sent ACK acknowledges SYN-ACK already
-                        result = TestResult(self, TEST_FAIL, 1, "ACK with reserved flag ignored")
+                        result = TestResult(self, TEST_FAIL, 1,
+                                            "ACK with reserved flag ignored", custom=custom_res)
                 elif ack_res.flags & 0x04:
-                    return TestResult(self, TEST_FAIL, 1, "RST in reply to ACK with reserved flag")
+                    return TestResult(self, TEST_FAIL, 1,
+                                      "RST in reply to ACK with reserved flag", custom=custom_res)
                 elif ack_res._raw[12] & 0b1110:
-                    result = TestResult(self, TEST_FAIL, 1,
-                                        "Reserved flags not zeroed in reply to ACK with reserved flag")
+                    result = TestResult(
+                        self, TEST_FAIL, 1,
+                        "Reserved flags not zeroed in reply to ACK with reserved flag",
+                        custom=custom_res
+                    )
                 else:
                     result = TestResult(self, TEST_PASS)
 
@@ -103,13 +114,14 @@ class ReservedFlagsTest(BaseTest[IPAddressType]):
         await self.send(ack_res.make_reset(self.src, self.dst))
         return result  # type: ignore
 
-    def _check_quote(self, icmp: ICMPQuote[IPAddressType]) -> Optional[int]:
+    @staticmethod
+    def _quote_modified(icmp: ICMPQuote[IPAddressType]) -> bool:
         if len(icmp.quote) < 13:
             # Reserved flags not included in quote
-            return None
+            return False
 
         # 9th flag bit is used for an optional ECN extension
         if (icmp.quote[12] & 0b1110) == 0b0100:
-            return None
+            return False
 
-        return decode_ttl(icmp.quote, icmp.hops, self._HOP_LIMIT)
+        return True

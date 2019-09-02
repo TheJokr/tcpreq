@@ -143,8 +143,8 @@ class BaseTestMultiplexer(Generic[IPAddressType]):
     def _handle_icmp_read(self) -> None:
         pass
 
-    def _handle_icmp_time_exceeded(self, src_addr: bytes, dst_addr: bytes,
-                                   quote: bytes, hops: int) -> None:
+    def _handle_icmp_time_exceeded(self, icmp_src: IPAddressType, src_addr: bytes,
+                                   dst_addr: bytes, quote: bytes, hops: int) -> None:
         if len(quote) < 4:
             # Discard invalid quotes silently
             return
@@ -153,7 +153,7 @@ class BaseTestMultiplexer(Generic[IPAddressType]):
         dst_port = int.from_bytes(quote[2:4], "big")
         try:
             self._test_map[(src_port, dst_addr, dst_port)].quote_queue.append(
-                ICMPQuote(src_addr, hops, quote)
+                ICMPQuote(icmp_src, src_addr, hops, quote)
             )
         except KeyError:
             pass
@@ -237,8 +237,8 @@ class IPv4TestMultiplexer(BaseTestMultiplexer[IPv4Address]):
                     if dlen < head_len:
                         continue
 
-                    self._handle_icmp_time_exceeded(data[12:16], data[16:20], data[head_len:total_len],
-                                                    hops=self._recover_ttl(data))
+                    self._handle_icmp_time_exceeded(IPv4Address(src[0]), data[12:16], data[16:20],
+                                                    data[head_len:total_len], hops=self._recover_ttl(data))
         except BlockingIOError:
             pass
 
@@ -352,7 +352,8 @@ class IPv6TestMultiplexer(BaseTestMultiplexer[IPv6Address]):
                         continue
 
                     # Number of hops is not encoded into IPv6 packets
-                    self._handle_icmp_time_exceeded(src_addr, dst_addr, quote, hops=0)
+                    self._handle_icmp_time_exceeded(IPv6Address(src[0]), src_addr,
+                                                    dst_addr, quote, hops=0)
         except BlockingIOError:
             pass
 
