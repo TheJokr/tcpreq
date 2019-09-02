@@ -6,7 +6,7 @@ from ipaddress import IPv4Address, IPv6Address
 import socket
 import asyncio
 
-from .types import IPAddressType, ScanHost, OutgoingPacket
+from .types import IPAddressType, ScanHost, OutgoingPacket, ICMPQuote
 from .limiter import TokenBucket, OutOfTokensError
 from .tests import BaseTest
 from .tcp import Segment
@@ -152,7 +152,9 @@ class BaseTestMultiplexer(Generic[IPAddressType]):
         src_port = int.from_bytes(quote[0:2], "big")
         dst_port = int.from_bytes(quote[2:4], "big")
         try:
-            self._test_map[(src_port, dst_addr, dst_port)].quote_queue.append((src_addr, hops, quote))
+            self._test_map[(src_port, dst_addr, dst_port)].quote_queue.append(
+                ICMPQuote(src_addr, hops, quote)
+            )
         except KeyError:
             pass
 

@@ -5,7 +5,7 @@ import asyncio
 from .base import BaseTest
 from .result import TestResult, TEST_PASS, TEST_UNK, TEST_FAIL
 from .ttl_coding import encode_ttl, decode_ttl
-from ..types import IPAddressType
+from ..types import IPAddressType, ICMPQuote
 from ..tcp import Segment, MSSOption
 from ..alp import ALP_MAP
 
@@ -80,7 +80,7 @@ class UrgentPointerTest(BaseTest[IPAddressType]):
         await asyncio.sleep(10, loop=self._loop)
 
         res_stat = 0
-        hops = (i for i in (self._check_quote(*item, up=chck_up) for item in self.quote_queue)
+        hops = (i for i in (self._check_quote(item, up=chck_up) for item in self.quote_queue)
                 if i is not None)
         for mbox_hop in hops:
             if mbox_hop == 0 and res_stat >= 1:
@@ -97,13 +97,12 @@ class UrgentPointerTest(BaseTest[IPAddressType]):
                 res_stat = 1
         return result
 
-    def _check_quote(self, src_addr: bytes, ttl_guess: int, quote: bytes, *, up: bytes) -> Optional[int]:
-        qlen = len(quote)
-        if qlen < 20:
-            #  Urgent pointer not included in quote
+    def _check_quote(self, icmp: ICMPQuote[IPAddressType], *, up: bytes) -> Optional[int]:
+        if len(icmp.quote) < 20:
+            # Urgent pointer not included in quote
             return None
 
-        if (quote[13] & 0x20) and quote[18:20] == up:
+        if (icmp.quote[13] & 0x20) and icmp.quote[18:20] == up:
             return None
 
-        return decode_ttl(quote, ttl_guess, self._HOP_LIMIT, win=False, ack=False, up=False, opts=True)
+        return decode_ttl(icmp.quote, icmp.hops, self._HOP_LIMIT, win=False, ack=False, up=False, opts=True)

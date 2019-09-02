@@ -5,7 +5,7 @@ import asyncio
 from .base import BaseTest
 from .result import TestResult, TEST_PASS, TEST_UNK, TEST_FAIL
 from .ttl_coding import encode_ttl, decode_ttl
-from ..types import IPAddressType
+from ..types import IPAddressType, ICMPQuote
 from ..tcp import Segment
 
 
@@ -47,7 +47,7 @@ class ReservedFlagsTest(BaseTest[IPAddressType]):
 
         result = None
         res_stat = 0
-        hops = (i for i in (self._check_quote(*item) for item in self.quote_queue) if i is not None)
+        hops = (i for i in (self._check_quote(item) for item in self.quote_queue) if i is not None)
         for mbox_hop in hops:
             if mbox_hop == 0 and res_stat >= 1:
                 continue
@@ -103,14 +103,13 @@ class ReservedFlagsTest(BaseTest[IPAddressType]):
         await self.send(ack_res.make_reset(self.src, self.dst))
         return result  # type: ignore
 
-    def _check_quote(self, src_addr: bytes, ttl_guess: int, quote: bytes) -> Optional[int]:
-        qlen = len(quote)
-        if qlen < 13:
+    def _check_quote(self, icmp: ICMPQuote[IPAddressType]) -> Optional[int]:
+        if len(icmp.quote) < 13:
             # Reserved flags not included in quote
             return None
 
         # 9th flag bit is used for an optional ECN extension
-        if (quote[12] & 0b1110) == 0b0100:
+        if (icmp.quote[12] & 0b1110) == 0b0100:
             return None
 
-        return decode_ttl(quote, ttl_guess, self._HOP_LIMIT)
+        return decode_ttl(icmp.quote, icmp.hops, self._HOP_LIMIT)

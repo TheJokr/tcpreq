@@ -5,7 +5,7 @@ import asyncio
 from .base import BaseTest
 from .result import TestResult, TEST_PASS, TEST_UNK, TEST_FAIL
 from .ttl_coding import encode_ttl, decode_ttl
-from ..types import IPAddressType
+from ..types import IPAddressType, ICMPQuote
 from ..tcp import Segment, noop_option, end_of_options
 from ..tcp.options import BaseOption, SizedOption, parse_options
 
@@ -45,7 +45,7 @@ class OptionSupportTest(BaseTest[IPAddressType]):
 
         result = TestResult(self, TEST_PASS)
         res_stat = 0
-        hops = (i for i in (self._check_quote(*item) for item in self.quote_queue) if i is not None)
+        hops = (i for i in (self._check_quote(item) for item in self.quote_queue) if i is not None)
         for mbox_hop in hops:
             if mbox_hop == 0 and res_stat >= 1:
                 continue
@@ -62,25 +62,25 @@ class OptionSupportTest(BaseTest[IPAddressType]):
         del res_stat, hops
         return result
 
-    def _check_quote(self, src_addr: bytes, ttl_guess: int, quote: bytes) -> Optional[int]:
-        qlen = len(quote)
+    def _check_quote(self, icmp: ICMPQuote[IPAddressType]) -> Optional[int]:
+        qlen = len(icmp.quote)
         if qlen < 20:
             # Header options not included in quote
             return None
 
-        head_len = (quote[12] >> 2) & 0b00111100
+        head_len = (icmp.quote[12] >> 2) & 0b00111100
         if qlen < head_len:
             # Header options not included in quote
             return None
 
-        opts = bytearray(quote[20:head_len])
+        opts = bytearray(icmp.quote[20:head_len])
         try:
             if {noop_option, end_of_options}.issubset(parse_options(opts)):
                 return None
         except ValueError:
             pass
 
-        return decode_ttl(quote, ttl_guess, self._HOP_LIMIT, win=True, ack=True, up=True, opts=False)
+        return decode_ttl(icmp.quote, icmp.hops, self._HOP_LIMIT, win=True, ack=True, up=True, opts=False)
 
 
 class UnknownOptionTest(BaseTest[IPAddressType]):
@@ -124,7 +124,7 @@ class UnknownOptionTest(BaseTest[IPAddressType]):
 
         result = TestResult(self, TEST_PASS)
         res_stat = 0
-        hops = (i for i in (self._check_quote(*item) for item in self.quote_queue) if i is not None)
+        hops = (i for i in (self._check_quote(item) for item in self.quote_queue) if i is not None)
         for mbox_hop in hops:
             if mbox_hop == 0 and res_stat >= 1:
                 continue
@@ -141,25 +141,25 @@ class UnknownOptionTest(BaseTest[IPAddressType]):
         del res_stat, hops
         return result
 
-    def _check_quote(self, src_addr: bytes, ttl_guess: int, quote: bytes) -> Optional[int]:
-        qlen = len(quote)
+    def _check_quote(self, icmp: ICMPQuote[IPAddressType]) -> Optional[int]:
+        qlen = len(icmp.quote)
         if qlen < 20:
             # Header options not included in quote
             return None
 
-        head_len = (quote[12] >> 2) & 0b00111100
+        head_len = (icmp.quote[12] >> 2) & 0b00111100
         if qlen < head_len:
             # Header options not included in quote
             return None
 
-        opts = bytearray(quote[20:head_len])
+        opts = bytearray(icmp.quote[20:head_len])
         try:
             if self._UNK_OPT in parse_options(opts):
                 return None
         except ValueError:
             pass
 
-        return decode_ttl(quote, ttl_guess, self._HOP_LIMIT, win=True, ack=True, up=True, opts=False)
+        return decode_ttl(icmp.quote, icmp.hops, self._HOP_LIMIT, win=True, ack=True, up=True, opts=False)
 
 
 class IllegalLengthOptionTest(BaseTest[IPAddressType]):
@@ -211,7 +211,7 @@ class IllegalLengthOptionTest(BaseTest[IPAddressType]):
 
         await asyncio.sleep(10, loop=self._loop)
         res_stat = 0
-        hops = (i for i in (self._check_quote(*item) for item in self.quote_queue) if i is not None)
+        hops = (i for i in (self._check_quote(item) for item in self.quote_queue) if i is not None)
         for mbox_hop in hops:
             if mbox_hop == 0 and res_stat >= 1:
                 continue
@@ -255,18 +255,18 @@ class IllegalLengthOptionTest(BaseTest[IPAddressType]):
         await self.send(syn_res.make_reset(self.src, self.dst))
         return result
 
-    def _check_quote(self, src_addr: bytes, ttl_guess: int, quote: bytes) -> Optional[int]:
-        qlen = len(quote)
+    def _check_quote(self, icmp: ICMPQuote[IPAddressType]) -> Optional[int]:
+        qlen = len(icmp.quote)
         if qlen < 20:
             # Header options not included in quote
             return None
 
-        head_len = (quote[12] >> 2) & 0b00111100
+        head_len = (icmp.quote[12] >> 2) & 0b00111100
         if qlen < head_len:
             # Header options not included in quote
             return None
 
-        opts = bytearray(quote[20:head_len])
+        opts = bytearray(icmp.quote[20:head_len])
         try:
             for _ in parse_options(opts):
                 pass
@@ -275,4 +275,4 @@ class IllegalLengthOptionTest(BaseTest[IPAddressType]):
             if opts[:4] == bytes(self._ILLEGAL_OPT):
                 return None
 
-        return decode_ttl(quote, ttl_guess, self._HOP_LIMIT, win=True, ack=True, up=True, opts=False)
+        return decode_ttl(icmp.quote, icmp.hops, self._HOP_LIMIT, win=True, ack=True, up=True, opts=False)

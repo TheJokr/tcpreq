@@ -7,7 +7,7 @@ import asyncio
 from .base import BaseTest
 from .result import TestResult, TEST_PASS, TEST_UNK, TEST_FAIL
 from .ttl_coding import encode_ttl, decode_ttl
-from ..types import IPAddressType
+from ..types import IPAddressType, ICMPQuote
 from ..tcp import Segment, ChecksumError, check_window
 from ..tcp.checksum import calc_checksum
 
@@ -88,7 +88,7 @@ class IncorrectChecksumTest(BaseTest[IPAddressType]):
 
         await asyncio.sleep(10, loop=self._loop)
         res_stat = 0
-        hops = filter(None, (self._check_quote(*item, checksum=cs) for item in self.quote_queue))
+        hops = filter(None, (self._check_quote(item, checksum=cs) for item in self.quote_queue))
         for mbox_hop, verified in hops:
             if mbox_hop > 0:
                 if not verified and res_stat >= 3:
@@ -168,31 +168,31 @@ class IncorrectChecksumTest(BaseTest[IPAddressType]):
         await self.send(ack_res.make_reset(self.src, self.dst))
         return result
 
-    def _check_quote(self, src_addr: bytes, ttl_guess: int, quote: bytes,
-                     *, checksum: bytes) -> Optional[Tuple[int, bool]]:
-        qlen = len(quote)
+    def _check_quote(self, icmp: ICMPQuote[IPAddressType], *,
+                     checksum: bytes) -> Optional[Tuple[int, bool]]:
+        qlen = len(icmp.quote)
         if qlen < 18:
             # Checksum not included in quote
             return None
 
-        cs = quote[16:18]
+        cs = icmp.quote[16:18]
         if cs == checksum:
             return None
 
         # Checksum is modified, but could still be wrong (incremental update)
         cs_vrfy = False
         if qlen >= 20:
-            head_len = (quote[12] >> 2) & 0b00111100
+            head_len = (icmp.quote[12] >> 2) & 0b00111100
             if qlen >= head_len:
                 # Verify checksum if full header is included
-                seg = bytearray(quote)
+                seg = bytearray(icmp.quote)
                 seg[16:18] = b"\x00\x00"
-                cs_vrfy = (calc_checksum(src_addr, self.dst.ip.packed, seg) == cs)
+                cs_vrfy = (calc_checksum(icmp.quote_src, self.dst.ip.packed, seg) == cs)
                 if not cs_vrfy:
                     # Checksum is still incorrect
                     return None
 
-        return decode_ttl(quote, ttl_guess, self._HOP_LIMIT), cs_vrfy
+        return decode_ttl(icmp.quote, icmp.hops, self._HOP_LIMIT), cs_vrfy
 
 
 class ZeroChecksumTest(IncorrectChecksumTest[IPAddressType]):

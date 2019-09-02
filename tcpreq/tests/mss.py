@@ -6,7 +6,7 @@ from ipaddress import IPv4Address
 from .base import BaseTest
 from .result import TestResult, TEST_PASS, TEST_UNK, TEST_FAIL
 from .ttl_coding import encode_ttl, decode_ttl
-from ..types import IPAddressType
+from ..types import IPAddressType, ICMPQuote
 from ..tcp import Segment, MSSOption
 from ..tcp.options import parse_options
 from ..alp import ALP_MAP
@@ -54,7 +54,7 @@ class MSSSupportTest(BaseTest[IPAddressType]):
 
         result = None if len(syn_res) <= 535 else TestResult(self, TEST_FAIL, 1, "Segment too large")
         res_stat = 0
-        hops = (i for i in (self._check_quote(*item) for item in self.quote_queue) if i is not None)
+        hops = (i for i in (self._check_quote(item) for item in self.quote_queue) if i is not None)
         for mbox_hop in hops:
             if mbox_hop == 0 and res_stat >= 1:
                 continue
@@ -113,13 +113,13 @@ class MSSSupportTest(BaseTest[IPAddressType]):
         await self.send(seg.make_reset(self.src, self.dst))
         return result
 
-    def _check_quote(self, src_addr: bytes, ttl_guess: int, quote: bytes) -> Optional[int]:
-        qlen = len(quote)
+    def _check_quote(self, icmp: ICMPQuote[IPAddressType]) -> Optional[int]:
+        qlen = len(icmp.quote)
         if qlen < 20:
             # Header options not included in quote
             return None
 
-        head_len = (quote[12] >> 2) & 0b00111100
+        head_len = (icmp.quote[12] >> 2) & 0b00111100
         if qlen < head_len:
             # Header options not included in quote
             return None
@@ -127,7 +127,7 @@ class MSSSupportTest(BaseTest[IPAddressType]):
         idx = 0
         max_idx = len(self._SYN_OPTS) - 1
         found = False
-        opts = bytearray(quote[20:head_len])
+        opts = bytearray(icmp.quote[20:head_len])
         try:
             for opt in parse_options(opts):
                 if isinstance(opt, MSSOption):
@@ -143,7 +143,7 @@ class MSSSupportTest(BaseTest[IPAddressType]):
             pass
 
         return (None if found else
-                decode_ttl(quote, ttl_guess, self._HOP_LIMIT, win=False, ack=True, up=True, opts=False))
+                decode_ttl(icmp.quote, icmp.hops, self._HOP_LIMIT, win=False, ack=True, up=True, opts=False))
 
 
 class MissingMSSTest(BaseTest[IPAddressType]):
@@ -186,7 +186,7 @@ class MissingMSSTest(BaseTest[IPAddressType]):
         result = (None if len(syn_res) <= seg_max_len else
                   TestResult(self, TEST_FAIL, 1, "Segment too large"))
         res_stat = 0
-        hops = (i for i in (self._check_quote(*item) for item in self.quote_queue) if i is not None)
+        hops = (i for i in (self._check_quote(item) for item in self.quote_queue) if i is not None)
         for mbox_hop in hops:
             if mbox_hop == 0 and res_stat >= 1:
                 continue
@@ -241,25 +241,25 @@ class MissingMSSTest(BaseTest[IPAddressType]):
         await self.send(seg.make_reset(self.src, self.dst))
         return result
 
-    def _check_quote(self, src_addr: bytes, ttl_guess: int, quote: bytes) -> Optional[int]:
-        qlen = len(quote)
+    def _check_quote(self, icmp: ICMPQuote[IPAddressType]) -> Optional[int]:
+        qlen = len(icmp.quote)
         if qlen < 20:
             # Header options not included in quote
             return None
 
-        head_len = (quote[12] >> 2) & 0b00111100
+        head_len = (icmp.quote[12] >> 2) & 0b00111100
         if qlen < head_len:
             # Header options not included in quote
             return None
 
-        opts = bytearray(quote[20:head_len])
+        opts = bytearray(icmp.quote[20:head_len])
         try:
             if not any(isinstance(opt, MSSOption) for opt in parse_options(opts)):
                 return None
         except ValueError:
             pass
 
-        return decode_ttl(quote, ttl_guess, self._HOP_LIMIT, win=False, ack=True, up=True, opts=True)
+        return decode_ttl(icmp.quote, icmp.hops, self._HOP_LIMIT, win=False, ack=True, up=True, opts=True)
 
 
 # Derive from MSSSupportTest to avoid code duplication

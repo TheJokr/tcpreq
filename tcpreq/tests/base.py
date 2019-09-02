@@ -6,7 +6,7 @@ import random
 import asyncio
 
 from .result import TestResult, TestResultStatus, TEST_UNK, TEST_FAIL
-from ..types import IPAddressType, ScanHost, OutgoingPacket
+from ..types import IPAddressType, ScanHost, OutgoingPacket, ICMPQuote
 from ..tcp import Segment
 
 
@@ -30,7 +30,7 @@ class BaseTest(Generic[IPAddressType]):
         self.dst: ScanHost[IPAddressType] = dst
         self._isns: List[Tuple[float, int]] = []
         self.recv_queue: "asyncio.Queue[bytearray]" = asyncio.Queue(loop=loop)
-        self.quote_queue: List[Tuple[bytes, int, bytes]] = []
+        self.quote_queue: List[ICMPQuote[IPAddressType]] = []
         self.send_queue: Optional[Deque[OutgoingPacket[IPAddressType]]] = None
         self._loop = loop
 
