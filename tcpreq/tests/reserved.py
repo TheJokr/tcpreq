@@ -71,28 +71,37 @@ class ReservedFlagsTest(BaseTest[IPAddressType]):
         self.quote_queue.clear()
         self.recv_queue = asyncio.Queue(loop=self._loop)
 
-        try:
-            # TODO: change timeout?
-            ack_res = await self.receive(timeout=30)
-        except asyncio.TimeoutError:
-            # No response is acceptable
-            result = TestResult(self, TEST_PASS)
-            ack_res = syn_res  # For ack_res.make_reset below
-        else:
-            if (ack_res.flags == syn_res.flags and ack_res.seq == syn_res.seq and
-                    ack_res.ack_seq == syn_res.ack_seq):
-                # Sent ACK acknowledges SYN-ACK already
-                result = TestResult(self, TEST_FAIL, 1, "ACK with reserved flag ignored")
-            elif ack_res.flags & 0x04:
-                return TestResult(self, TEST_FAIL, 1, "RST in reply to ACK with reserved flag")
-            elif ack_res._raw[12] & 0b1110:
-                result = TestResult(self, TEST_FAIL, 1,
-                                    "Reserved flags not zeroed in reply to ACK with reserved flag")
-            else:
+        for rt in range(3):
+            try:
+                # TODO: change timeout?
+                ack_res = await self.receive(timeout=30)
+            except asyncio.TimeoutError:
+                # No response is acceptable
                 result = TestResult(self, TEST_PASS)
+                ack_res = syn_res  # For ack_res.make_reset below
+            else:
+                if (ack_res.flags == syn_res.flags and ack_res.seq == syn_res.seq and
+                        ack_res.ack_seq == syn_res.ack_seq):
+                    if rt < 2:
+                        # SYN-ACK shouldn't be retransmitted, retransmit ACK (up to two times)
+                        await self.send(syn_res.make_reply(self.src, self.dst, window=1024,
+                                                           rsrvd=0b0100, ack=True))
+                    else:
+                        # Sent ACK acknowledges SYN-ACK already
+                        result = TestResult(self, TEST_FAIL, 1, "ACK with reserved flag ignored")
+                elif ack_res.flags & 0x04:
+                    return TestResult(self, TEST_FAIL, 1, "RST in reply to ACK with reserved flag")
+                elif ack_res._raw[12] & 0b1110:
+                    result = TestResult(self, TEST_FAIL, 1,
+                                        "Reserved flags not zeroed in reply to ACK with reserved flag")
+                else:
+                    result = TestResult(self, TEST_PASS)
+
+            if result is not None:
+                break
 
         await self.send(ack_res.make_reset(self.src, self.dst))
-        return result
+        return result  # type: ignore
 
     def _check_quote(self, src_addr: bytes, ttl_guess: int, quote: bytes) -> Optional[int]:
         qlen = len(quote)
