@@ -8,6 +8,7 @@ from .result import TestResult, TEST_PASS, TEST_UNK, TEST_FAIL
 from .ttl_coding import encode_ttl, decode_ttl
 from ..types import IPAddressType, ICMPQuote
 from ..tcp import Segment
+from ..alp import ALP_MAP
 
 
 class ReservedFlagsTest(BaseTest[IPAddressType]):
@@ -77,6 +78,7 @@ class ReservedFlagsTest(BaseTest[IPAddressType]):
         self.quote_queue.clear()
         self.recv_queue = asyncio.Queue(loop=self._loop)
 
+        req = b''
         for rt in range(3):
             try:
                 # TODO: change timeout?
@@ -88,10 +90,17 @@ class ReservedFlagsTest(BaseTest[IPAddressType]):
             else:
                 if (ack_res.flags == syn_res.flags and ack_res.seq == syn_res.seq and
                         ack_res.ack_seq == syn_res.ack_seq):
+                    if rt == 0 and self.dst.port in ALP_MAP:
+                        # Add ALP request to subsequent ACKs to counter TCP_DEFER_ACCEPT
+                        alp = ALP_MAP[self.dst.port](self.src, self.dst)
+                        tmp = alp.pull_data(500)
+                        if tmp is not None and len(tmp) <= 1460:
+                            req = tmp
+
                     if rt < 2:
                         # SYN-ACK shouldn't be retransmitted, retransmit ACK (up to two times)
                         await self.send(syn_res.make_reply(self.src, self.dst, window=1024,
-                                                           rsrvd=0b0100, ack=True))
+                                                           rsrvd=0b0100, ack=True, payload=req))
                     else:
                         # Sent ACK acknowledges SYN-ACK already
                         result = TestResult(self, TEST_FAIL, 1,
