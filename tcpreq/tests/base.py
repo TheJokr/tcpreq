@@ -2,10 +2,12 @@ from abc import abstractmethod
 from typing import Generic, ClassVar, Awaitable, List, Tuple, Deque, Union, Optional
 import time
 import math
+import operator
 import random
 import asyncio
 
 from .result import TestResult, TestResultStatus, TEST_UNK, TEST_FAIL
+from .ttl_coding import decode_ttl
 from ..types import IPAddressType, ScanHost, OutgoingPacket, ICMPQuote
 from ..tcp import Segment
 
@@ -117,3 +119,32 @@ class BaseTest(Generic[IPAddressType]):
     @abstractmethod
     async def run(self) -> TestResult:
         pass
+
+    def _detect_mboxes(self, info: str, *, win: bool = True, ack: bool = True,
+                       up: bool = True, opts: bool = True) -> Optional[TestResult]:
+        result = None
+        res_stat = 0
+        for icmp in self.quote_queue:
+            mbox_hop = decode_ttl(icmp.quote, icmp.hops, self._HOP_LIMIT,
+                                  win=win, ack=ack, up=up, opts=opts)
+            self._path.append((mbox_hop, icmp.icmp_src.compressed))
+
+            if not self._quote_modified(icmp) or (mbox_hop == 0 and res_stat >= 1):
+                continue
+
+            reason = "Middlebox interference detected"
+            reason += " at or before hop {0}" if mbox_hop > 0 else " at unknown hop"
+            reason += " ({1})"
+            result = TestResult(self, TEST_UNK, 1, reason.format(mbox_hop, info))
+
+            if mbox_hop > 0:
+                break
+            else:
+                res_stat = 1
+
+        self._path.sort(key=operator.itemgetter(0))
+        return result
+
+    @staticmethod
+    def _quote_modified(icmp: ICMPQuote[IPAddressType]) -> bool:
+        return False
