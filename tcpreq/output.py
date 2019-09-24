@@ -30,8 +30,8 @@ class _JSONLinesOutput(_BaseOutput):
     def __call__(self, test_name: str, futures: Iterable["asyncio.Future[TestResult]"],
                  discarded: Iterable[ScanHost], filtered: Iterable[ScanHost]) -> None:
         tmpl: Dict = {"ip": None, "port": None, "host": None}
-        tmpl = {"test": test_name, "timestamp": None, "src": tmpl, "dst": tmpl, "isns": [],
-                "status": None, "stage": None, "reason": None, "custom": None}
+        tmpl = {"test": test_name, "timestamp": None, "src": tmpl, "dst": tmpl, "path": [],
+                "isns": [], "status": None, "stage": None, "reason": None, "custom": None}
 
         for it, stat in ((discarded, "DISC"), (filtered, "FLTR")):
             for host in it:
@@ -59,6 +59,7 @@ class _JSONLinesOutput(_BaseOutput):
                 o["timestamp"] = time.strftime(self._TS_FMT, time.gmtime(res.time))
                 o["src"] = res.src.raw
                 o["dst"] = res.dst.raw
+                o["path"] = res.path
                 o["isns"] = res.isns
                 o["status"] = res.status.name
                 o["stage"] = res.stage

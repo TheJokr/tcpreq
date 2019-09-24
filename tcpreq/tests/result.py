@@ -23,13 +23,14 @@ TEST_FAIL = TestResultStatus.FAIL
 
 
 class TestResult(object):
-    __slots__ = ("time", "src", "dst", "isns", "status", "stage", "reason", "custom")
+    __slots__ = ("time", "src", "dst", "path", "isns", "status", "stage", "reason", "custom")
 
     def __init__(self, test: "BaseTest", status: TestResultStatus,
                  stage: int = None, reason: str = None, *, custom: Dict = None) -> None:
         self.time = time.time()
         self.src = test.src
         self.dst = test.dst
+        self.path = test._path
         self.isns = test._isns
         self.status = status
         self.stage = stage

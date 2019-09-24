@@ -28,6 +28,7 @@ class BaseTest(Generic[IPAddressType]):
 
         self.src: ScanHost[IPAddressType] = src
         self.dst: ScanHost[IPAddressType] = dst
+        self._path: List[Tuple[int, str]] = []
         self._isns: List[Tuple[float, int]] = []
         self.recv_queue: "asyncio.Queue[bytearray]" = asyncio.Queue(loop=loop)
         self.quote_queue: List[ICMPQuote[IPAddressType]] = []
