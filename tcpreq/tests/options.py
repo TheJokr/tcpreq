@@ -43,44 +43,25 @@ class OptionSupportTest(BaseTest[IPAddressType]):
         await self.send(syn_res.make_reset(self.src, self.dst))
         await asyncio.sleep(10, loop=self._loop)
 
-        result = TestResult(self, TEST_PASS)
-        res_stat = 0
-        hops = (i for i in (self._check_quote(item) for item in self.quote_queue) if i is not None)
-        for mbox_hop in hops:
-            if mbox_hop == 0 and res_stat >= 1:
-                continue
+        return self._detect_mboxes("header option(s) deleted", win=True,
+                                   ack=True, up=True, opts=False) or TestResult(self, TEST_PASS)
 
-            reason = "Middlebox interference detected"
-            reason += " at or before hop {0}" if mbox_hop > 0 else " at unknown hop"
-            reason += " (header option(s) deleted)"
-            result = TestResult(self, TEST_UNK, 1, reason.format(mbox_hop))
-
-            if mbox_hop > 0:
-                break
-            else:
-                res_stat = 1
-        del res_stat, hops
-        return result
-
-    def _check_quote(self, icmp: ICMPQuote[IPAddressType]) -> Optional[int]:
+    def _quote_modified(self, icmp: ICMPQuote[IPAddressType], *, data: bytes = None) -> bool:
         qlen = len(icmp.quote)
         if qlen < 20:
             # Header options not included in quote
-            return None
+            return False
 
         head_len = (icmp.quote[12] >> 2) & 0b00111100
         if qlen < head_len:
             # Header options not included in quote
-            return None
+            return False
 
         opts = bytearray(icmp.quote[20:head_len])
         try:
-            if {noop_option, end_of_options}.issubset(parse_options(opts)):
-                return None
+            return not {noop_option, end_of_options}.issubset(parse_options(opts))
         except ValueError:
-            pass
-
-        return decode_ttl(icmp.quote, icmp.hops, self._HOP_LIMIT, win=True, ack=True, up=True, opts=False)
+            return True
 
 
 class UnknownOptionTest(BaseTest[IPAddressType]):
@@ -122,44 +103,25 @@ class UnknownOptionTest(BaseTest[IPAddressType]):
         await self.send(syn_res.make_reset(self.src, self.dst))
         await asyncio.sleep(10, loop=self._loop)
 
-        result = TestResult(self, TEST_PASS)
-        res_stat = 0
-        hops = (i for i in (self._check_quote(item) for item in self.quote_queue) if i is not None)
-        for mbox_hop in hops:
-            if mbox_hop == 0 and res_stat >= 1:
-                continue
+        return self._detect_mboxes("unknown header option deleted", win=True,
+                                   ack=True, up=True, opts=False) or TestResult(self, TEST_PASS)
 
-            reason = "Middlebox interference detected"
-            reason += " at or before hop {0}" if mbox_hop > 0 else " at unknown hop"
-            reason += " (unknown header option deleted)"
-            result = TestResult(self, TEST_UNK, 1, reason.format(mbox_hop))
-
-            if mbox_hop > 0:
-                break
-            else:
-                res_stat = 1
-        del res_stat, hops
-        return result
-
-    def _check_quote(self, icmp: ICMPQuote[IPAddressType]) -> Optional[int]:
+    def _quote_modified(self, icmp: ICMPQuote[IPAddressType], *, data: bytes = None) -> bool:
         qlen = len(icmp.quote)
         if qlen < 20:
             # Header options not included in quote
-            return None
+            return False
 
         head_len = (icmp.quote[12] >> 2) & 0b00111100
         if qlen < head_len:
             # Header options not included in quote
-            return None
+            return False
 
         opts = bytearray(icmp.quote[20:head_len])
         try:
-            if self._UNK_OPT in parse_options(opts):
-                return None
+            return self._UNK_OPT not in parse_options(opts)
         except ValueError:
-            pass
-
-        return decode_ttl(icmp.quote, icmp.hops, self._HOP_LIMIT, win=True, ack=True, up=True, opts=False)
+            return True
 
 
 class IllegalLengthOptionTest(BaseTest[IPAddressType]):
@@ -210,23 +172,8 @@ class IllegalLengthOptionTest(BaseTest[IPAddressType]):
             return result
 
         await asyncio.sleep(10, loop=self._loop)
-        res_stat = 0
-        hops = (i for i in (self._check_quote(item) for item in self.quote_queue) if i is not None)
-        for mbox_hop in hops:
-            if mbox_hop == 0 and res_stat >= 1:
-                continue
-
-            reason = "Middlebox interference detected"
-            reason += " at or before hop {0}" if mbox_hop > 0 else " at unknown hop"
-            reason += " (illegal header option deleted)"
-            result = TestResult(self, TEST_UNK, 1, reason.format(mbox_hop))
-
-            if mbox_hop > 0:
-                break
-            else:
-                res_stat = 1
-        del res_stat, hops
-
+        result = self._detect_mboxes("illegal header option deleted", win=True,
+                                     ack=True, up=True, opts=False) or result
         if result is not None:
             return result
 
@@ -255,16 +202,16 @@ class IllegalLengthOptionTest(BaseTest[IPAddressType]):
         await self.send(syn_res.make_reset(self.src, self.dst))
         return result
 
-    def _check_quote(self, icmp: ICMPQuote[IPAddressType]) -> Optional[int]:
+    def _quote_modified(self, icmp: ICMPQuote[IPAddressType], *, data: bytes = None) -> bool:
         qlen = len(icmp.quote)
         if qlen < 20:
             # Header options not included in quote
-            return None
+            return False
 
         head_len = (icmp.quote[12] >> 2) & 0b00111100
         if qlen < head_len:
             # Header options not included in quote
-            return None
+            return False
 
         opts = bytearray(icmp.quote[20:head_len])
         try:
@@ -272,7 +219,6 @@ class IllegalLengthOptionTest(BaseTest[IPAddressType]):
                 pass
         except ValueError:
             # parse_options should fail on parsing _ILLEGAL_OPT
-            if opts[:4] == bytes(self._ILLEGAL_OPT):
-                return None
+            return opts[:4] != bytes(self._ILLEGAL_OPT)
 
-        return decode_ttl(icmp.quote, icmp.hops, self._HOP_LIMIT, win=True, ack=True, up=True, opts=False)
+        return True

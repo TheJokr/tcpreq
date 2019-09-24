@@ -95,8 +95,7 @@ class ReservedFlagsTest(BaseTest[IPAddressType]):
         await self.send(ack_res.make_reset(self.src, self.dst))
         return result  # type: ignore
 
-    @staticmethod
-    def _quote_modified(icmp: ICMPQuote[IPAddressType]) -> bool:
+    def _quote_modified(self, icmp: ICMPQuote[IPAddressType], *, data: bytes = None) -> bool:
         if len(icmp.quote) < 13:
             # Reserved flags not included in quote
             return False

@@ -120,8 +120,8 @@ class BaseTest(Generic[IPAddressType]):
     async def run(self) -> TestResult:
         pass
 
-    def _detect_mboxes(self, info: str, *, win: bool = True, ack: bool = True,
-                       up: bool = True, opts: bool = True) -> Optional[TestResult]:
+    def _detect_mboxes(self, info: str, check_data: bytes = None, *, win: bool = True,
+                       ack: bool = True, up: bool = True, opts: bool = True) -> Optional[TestResult]:
         result = None
         res_stat = 0
         for icmp in self.quote_queue:
@@ -129,7 +129,7 @@ class BaseTest(Generic[IPAddressType]):
                                   win=win, ack=ack, up=up, opts=opts)
             self._path.append((mbox_hop, icmp.icmp_src.compressed))
 
-            if not self._quote_modified(icmp) or (mbox_hop == 0 and res_stat >= 1):
+            if not self._quote_modified(icmp, data=check_data) or (mbox_hop == 0 and res_stat >= 1):
                 continue
 
             reason = "Middlebox interference detected"
@@ -145,6 +145,5 @@ class BaseTest(Generic[IPAddressType]):
         self._path.sort(key=operator.itemgetter(0))
         return result
 
-    @staticmethod
-    def _quote_modified(icmp: ICMPQuote[IPAddressType]) -> bool:
+    def _quote_modified(self, icmp: ICMPQuote[IPAddressType], *, data: bytes = None) -> bool:
         return False

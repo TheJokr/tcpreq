@@ -53,23 +53,8 @@ class MSSSupportTest(BaseTest[IPAddressType]):
         await asyncio.sleep(10, loop=self._loop)
 
         result = None if len(syn_res) <= 535 else TestResult(self, TEST_FAIL, 1, "Segment too large")
-        res_stat = 0
-        hops = (i for i in (self._check_quote(item) for item in self.quote_queue) if i is not None)
-        for mbox_hop in hops:
-            if mbox_hop == 0 and res_stat >= 1:
-                continue
-
-            reason = "Middlebox interference detected"
-            reason += " at or before hop {0}" if mbox_hop > 0 else " at unknown hop"
-            reason += " (MSS modified or deleted)"
-            result = TestResult(self, TEST_UNK, 1, reason.format(mbox_hop))
-
-            if mbox_hop > 0:
-                break
-            else:
-                res_stat = 1
-        del res_stat, hops
-
+        result = self._detect_mboxes("MSS modified or deleted", win=False,
+                                     ack=True, up=True, opts=False) or result
         if result is not None:
             await self.send(syn_res.make_reset(self.src, self.dst))
             return result
@@ -113,16 +98,16 @@ class MSSSupportTest(BaseTest[IPAddressType]):
         await self.send(seg.make_reset(self.src, self.dst))
         return result
 
-    def _check_quote(self, icmp: ICMPQuote[IPAddressType]) -> Optional[int]:
+    def _quote_modified(self, icmp: ICMPQuote[IPAddressType], *, data: bytes = None) -> bool:
         qlen = len(icmp.quote)
         if qlen < 20:
             # Header options not included in quote
-            return None
+            return False
 
         head_len = (icmp.quote[12] >> 2) & 0b00111100
         if qlen < head_len:
             # Header options not included in quote
-            return None
+            return False
 
         idx = 0
         max_idx = len(self._SYN_OPTS) - 1
@@ -137,13 +122,11 @@ class MSSSupportTest(BaseTest[IPAddressType]):
                         else:
                             idx += 1
                     else:
-                        found = False
-                        break
+                        return True
         except ValueError:
             pass
 
-        return (None if found else
-                decode_ttl(icmp.quote, icmp.hops, self._HOP_LIMIT, win=False, ack=True, up=True, opts=False))
+        return not found
 
 
 class MissingMSSTest(BaseTest[IPAddressType]):
@@ -185,23 +168,7 @@ class MissingMSSTest(BaseTest[IPAddressType]):
 
         result = (None if len(syn_res) <= seg_max_len else
                   TestResult(self, TEST_FAIL, 1, "Segment too large"))
-        res_stat = 0
-        hops = (i for i in (self._check_quote(item) for item in self.quote_queue) if i is not None)
-        for mbox_hop in hops:
-            if mbox_hop == 0 and res_stat >= 1:
-                continue
-
-            reason = "Middlebox interference detected"
-            reason += " at or before hop {0}" if mbox_hop > 0 else " at unknown hop"
-            reason += " (MSS inserted)"
-            result = TestResult(self, TEST_UNK, 1, reason.format(mbox_hop))
-
-            if mbox_hop > 0:
-                break
-            else:
-                res_stat = 1
-        del res_stat, hops
-
+        result = self._detect_mboxes("MSS inserted", win=False, ack=True, up=True, opts=True) or result
         if result is not None:
             await self.send(syn_res.make_reset(self.src, self.dst))
             return result
@@ -241,25 +208,22 @@ class MissingMSSTest(BaseTest[IPAddressType]):
         await self.send(seg.make_reset(self.src, self.dst))
         return result
 
-    def _check_quote(self, icmp: ICMPQuote[IPAddressType]) -> Optional[int]:
+    def _quote_modified(self, icmp: ICMPQuote[IPAddressType], *, data: bytes = None) -> bool:
         qlen = len(icmp.quote)
         if qlen < 20:
             # Header options not included in quote
-            return None
+            return False
 
         head_len = (icmp.quote[12] >> 2) & 0b00111100
         if qlen < head_len:
             # Header options not included in quote
-            return None
+            return False
 
         opts = bytearray(icmp.quote[20:head_len])
         try:
-            if not any(isinstance(opt, MSSOption) for opt in parse_options(opts)):
-                return None
+            return any(isinstance(opt, MSSOption) for opt in parse_options(opts))
         except ValueError:
-            pass
-
-        return decode_ttl(icmp.quote, icmp.hops, self._HOP_LIMIT, win=False, ack=True, up=True, opts=True)
+            return True
 
 
 # Derive from MSSSupportTest to avoid code duplication

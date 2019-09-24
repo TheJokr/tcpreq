@@ -79,30 +79,12 @@ class UrgentPointerTest(BaseTest[IPAddressType]):
             result = TestResult(self, TEST_PASS)
         await asyncio.sleep(10, loop=self._loop)
 
-        res_stat = 0
-        hops = (i for i in (self._check_quote(item, up=chck_up) for item in self.quote_queue)
-                if i is not None)
-        for mbox_hop in hops:
-            if mbox_hop == 0 and res_stat >= 1:
-                continue
+        return self._detect_mboxes("URG/UP modified", check_data=chck_up, win=False,
+                                   ack=False, up=False, opts=True) or result
 
-            reason = "Middlebox interference detected"
-            reason += " at or before hop {0}" if mbox_hop > 0 else " at unknown hop"
-            reason += " (URG/UP modified)"
-            result = TestResult(self, TEST_UNK, 1, reason.format(mbox_hop))
+    def _quote_modified(self, icmp: ICMPQuote[IPAddressType], *, data: bytes = None) -> bool:
+        if data is None or len(icmp.quote) < 20:
+            # Urgent pointer not included in function call or in quote
+            return False
 
-            if mbox_hop > 0:
-                break
-            else:
-                res_stat = 1
-        return result
-
-    def _check_quote(self, icmp: ICMPQuote[IPAddressType], *, up: bytes) -> Optional[int]:
-        if len(icmp.quote) < 20:
-            # Urgent pointer not included in quote
-            return None
-
-        if (icmp.quote[13] & 0x20) and icmp.quote[18:20] == up:
-            return None
-
-        return decode_ttl(icmp.quote, icmp.hops, self._HOP_LIMIT, win=False, ack=False, up=False, opts=True)
+        return not ((icmp.quote[13] & 0x20) and icmp.quote[18:20] == data)

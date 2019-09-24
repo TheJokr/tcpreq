@@ -1,6 +1,7 @@
 from typing import Awaitable, List, Tuple, Optional
 import sys
 import time
+import operator
 import random
 import asyncio
 
@@ -88,8 +89,13 @@ class IncorrectChecksumTest(BaseTest[IPAddressType]):
 
         await asyncio.sleep(10, loop=self._loop)
         res_stat = 0
-        hops = filter(None, (self._check_quote(item, checksum=cs) for item in self.quote_queue))
-        for mbox_hop, verified in hops:
+        for icmp in self.quote_queue:
+            mbox_hop = decode_ttl(icmp.quote, icmp.hops, self._HOP_LIMIT)
+            self._path.append((mbox_hop, icmp.icmp_src.compressed))
+
+            verified = self._checksum_corrected(icmp, checksum=cs)
+            if verified is None:
+                continue
             if mbox_hop > 0:
                 if not verified and res_stat >= 3:
                     continue
@@ -108,8 +114,9 @@ class IncorrectChecksumTest(BaseTest[IPAddressType]):
                     res_stat = 3
             else:
                 res_stat = 1 + verified
-        del res_stat, hops
+        del res_stat
 
+        self._path.sort(key=operator.itemgetter(0))
         if result is not None:
             return result
 
@@ -168,8 +175,8 @@ class IncorrectChecksumTest(BaseTest[IPAddressType]):
         await self.send(ack_res.make_reset(self.src, self.dst))
         return result
 
-    def _check_quote(self, icmp: ICMPQuote[IPAddressType], *,
-                     checksum: bytes) -> Optional[Tuple[int, bool]]:
+    def _checksum_corrected(self, icmp: ICMPQuote[IPAddressType],
+                            *, checksum: bytes) -> Optional[bool]:
         qlen = len(icmp.quote)
         if qlen < 18:
             # Checksum not included in quote
@@ -192,7 +199,7 @@ class IncorrectChecksumTest(BaseTest[IPAddressType]):
                     # Checksum is still incorrect
                     return None
 
-        return decode_ttl(icmp.quote, icmp.hops, self._HOP_LIMIT), cs_vrfy
+        return cs_vrfy
 
 
 class ZeroChecksumTest(IncorrectChecksumTest[IPAddressType]):
