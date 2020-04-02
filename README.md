@@ -1,6 +1,6 @@
 # tcpreq – Measuring TCP Specification Conformance
 
-tcpreq is a modular Framework for TCP Specification Conformance testing, enabling Implementors to test specific features of their individual TCP Stack implementation, as well as enabling Researchers to assess the state of TCP Conformance in the Internet. It was developed {by Leo Blöcher} at [COMSYS Network Architectures Group](https://www.comsys.rwth-aachen.de/research/network-architectures) of [RWTH Aachen University](https://www.rwth-aachen.de).
+tcpreq is a modular Framework for TCP Specification Conformance testing, enabling Implementors to test specific features of their individual TCP Stack implementation, as well as enabling Researchers to assess the state of TCP Conformance in the Internet. It was developed {by Leo Blöcher} at [COMSYS Network Architectures Group](https://www.comsys.rwth-aachen.de/research/network-architectures) of [RWTH Aachen University](https://www.rwth-aachen.de). tcpreq is released according to the MIT License terms.
 
 ## Publications
 ### Paper
