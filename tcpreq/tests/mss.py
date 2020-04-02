@@ -26,6 +26,7 @@ class MSSSupportTest(BaseTest[IPAddressType]):
         if self.dst.port not in ALP_MAP:
             return TestResult(self, TEST_UNK, 0, "Missing ALP module for port {}".format(self.dst.port))
 
+        # Establish connection with specific MSS option(s)
         cur_seq = random.randint(0, 0xffff_ffff)
         futs: List[Awaitable[None]] = []
         for ttl in range(1, self._HOP_LIMIT + 1):
@@ -44,6 +45,8 @@ class MSSSupportTest(BaseTest[IPAddressType]):
             await self.send(Segment(self.src, self.dst, seq=cur_seq,
                                     window=0xffff, syn=True, options=self._SYN_OPTS))
             syn_res = await self._synchronize(cur_seq, timeout=30, test_stage=1)
+
+        # Finish 3WH, if applicable
         if isinstance(syn_res, TestResult):
             syn_res.status = TEST_FAIL
             syn_res.reason += " with MSS option"  # type: ignore
@@ -52,6 +55,7 @@ class MSSSupportTest(BaseTest[IPAddressType]):
         await self.send(syn_res.make_reply(self.src, self.dst, window=0xffff, ack=True))
         await asyncio.sleep(10, loop=self._loop)
 
+        # Check for MSS violations and middlebox interference
         result = None if len(syn_res) <= 535 else TestResult(self, TEST_FAIL, 1, "Segment too large")
         result = self._detect_mboxes("MSS modified or deleted", win=False,
                                      ack=True, up=True, opts=False) or result
@@ -63,6 +67,7 @@ class MSSSupportTest(BaseTest[IPAddressType]):
         self.quote_queue.clear()
         self.recv_queue = asyncio.Queue(loop=self._loop)
 
+        # Generate ALP payload data to monitor size of received segments
         # TODO: multiple flights?
         alp = ALP_MAP[self.dst.port](self.src, self.dst)
         req = alp.pull_data(400)
@@ -71,6 +76,7 @@ class MSSSupportTest(BaseTest[IPAddressType]):
             return TestResult(self, TEST_UNK, 1, "ALP data unavailable")
 
         # Path interference check above should cover this too
+        # May contain additional (late) MSS options
         await self.send(syn_res.make_reply(self.src, self.dst, window=0xffff, ack=True,
                                            options=self._REQ_OPTS, payload=req))
         del req
@@ -90,7 +96,7 @@ class MSSSupportTest(BaseTest[IPAddressType]):
                 pass
             else:
                 # The only invalid way to respond to the (optional) late MSS
-                # is by processing it. This would lead to bigger segments being received
+                # is by processing it. This would lead to bigger segments being received.
                 if len(seg) > 535:
                     result = TestResult(self, TEST_FAIL, 1, "Segment too large")
                     break
@@ -109,6 +115,8 @@ class MSSSupportTest(BaseTest[IPAddressType]):
             # Header options not included in quote
             return False
 
+        # MSS options must exactly match the ones in the original SYN
+        # Other kinds of options may be added/removed freely
         idx = 0
         max_idx = len(self._SYN_OPTS) - 1
         found = False
@@ -143,6 +151,7 @@ class MissingMSSTest(BaseTest[IPAddressType]):
         else:
             seg_max_len = 1220 + 20
 
+        # Establish connection without MSS option(s)
         cur_seq = random.randint(0, 0xffff_ffff)
         futs: List[Awaitable[None]] = []
         for ttl in range(1, self._HOP_LIMIT + 1):
@@ -160,12 +169,15 @@ class MissingMSSTest(BaseTest[IPAddressType]):
             # Retry synchronization without encoding/segment burst
             await self.send(Segment(self.src, self.dst, seq=cur_seq, window=0xffff, syn=True))
             syn_res = await self._synchronize(cur_seq, timeout=30, test_stage=1)
+
+        # Finish 3WH, if applicable
         if isinstance(syn_res, TestResult):
             return syn_res
 
         await self.send(syn_res.make_reply(self.src, self.dst, window=0xffff, ack=True))
         await asyncio.sleep(10, loop=self._loop)
 
+        # Check for MSS violations and middlebox interference
         result = (None if len(syn_res) <= seg_max_len else
                   TestResult(self, TEST_FAIL, 1, "Segment too large"))
         result = self._detect_mboxes("MSS inserted", win=False, ack=True, up=True, opts=True) or result
@@ -177,6 +189,7 @@ class MissingMSSTest(BaseTest[IPAddressType]):
         self.quote_queue.clear()
         self.recv_queue = asyncio.Queue(loop=self._loop)
 
+        # Generate ALP payload data to monitor size of received segments
         # TODO: multiple flights?
         alp = ALP_MAP[self.dst.port](self.src, self.dst)
         req = alp.pull_data(seg_max_len - 40)
@@ -219,6 +232,7 @@ class MissingMSSTest(BaseTest[IPAddressType]):
             # Header options not included in quote
             return False
 
+        # MSS option may not be added
         opts = bytearray(icmp.quote[20:head_len])
         try:
             return any(isinstance(opt, MSSOption) for opt in parse_options(opts))
@@ -228,7 +242,7 @@ class MissingMSSTest(BaseTest[IPAddressType]):
 
 # Derive from MSSSupportTest to avoid code duplication
 class LateOptionTest(MSSSupportTest[IPAddressType]):
-    """Test response to MSS option delivered after the 3WH."""
+    """Test response to additional MSS option delivered after the 3WH."""
     _REQ_OPTS = (MSSOption(536),)
 
     __slots__ = ()

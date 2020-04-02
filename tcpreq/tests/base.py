@@ -14,6 +14,7 @@ from ..tcp import Segment
 
 class BaseTest(Generic[IPAddressType]):
     """Abstract base class for all tests."""
+    # Hop limit for middlebox detection (tracebox)
     _HOP_LIMIT: ClassVar[int] = 30
 
     # Make sure _HOP_LIMIT fits into 5 bits (to save it in the IPv4 ID field 3 times).
@@ -38,6 +39,7 @@ class BaseTest(Generic[IPAddressType]):
         self._loop = loop
 
     def send(self, seg: Segment, *, ttl: int = None) -> Awaitable[None]:
+        """Send a segment, optionally with an explicit TTL for middlebox detection."""
         assert self.send_queue is not None, "Test is not registered with any multiplexer"
         assert ttl is None or 1 <= ttl <= self._HOP_LIMIT
 
@@ -46,6 +48,7 @@ class BaseTest(Generic[IPAddressType]):
         return fut
 
     async def receive(self, timeout: float) -> Segment:
+        """Asynchronously return the next received segment with a timeout."""
         while timeout > 0:
             start = time.monotonic()
             data = await asyncio.wait_for(self.recv_queue.get(), timeout, loop=self._loop)
@@ -58,6 +61,7 @@ class BaseTest(Generic[IPAddressType]):
                 pass
             else:
                 if seg.flags & 0x02:
+                    # Collect ISNs for ISN predictability meta-test
                     self._isns.append((time.monotonic(), seg.seq))
                 return seg
 
@@ -65,6 +69,7 @@ class BaseTest(Generic[IPAddressType]):
 
     async def _synchronize(self, sent_seq: int, timeout: float,
                            test_stage: int) -> Union[Segment, TestResult]:
+        """Handle 3WH failures after the initial SYN has been sent."""
         # Simultaneous open is not supported (targets are listening hosts)
         exp_ack = (sent_seq + 1) % 0x1_0000_0000
         try:
@@ -122,6 +127,7 @@ class BaseTest(Generic[IPAddressType]):
 
     def _detect_mboxes(self, info: str, check_data: bytes = None, *, win: bool = True,
                        ack: bool = True, up: bool = True, opts: bool = True) -> Optional[TestResult]:
+        """Check for middlebox interference using (overwritten) _quote_modified predicate."""
         result = None
         res_stat = 0
         for icmp in self.quote_queue:
@@ -146,4 +152,5 @@ class BaseTest(Generic[IPAddressType]):
         return result
 
     def _quote_modified(self, icmp: ICMPQuote[IPAddressType], *, data: bytes = None) -> bool:
+        """Determine whether the quoted segment has been modified along the path."""
         return False

@@ -11,10 +11,11 @@ from ..tcp.options import BaseOption, SizedOption, parse_options
 
 
 class OptionSupportTest(BaseTest[IPAddressType]):
-    """Verify support for the two legacy options."""
+    """Verify support for the two legacy options (End of option list, NOOP)."""
     __slots__ = ()
 
     async def run(self) -> TestResult:
+        # Establish connection with options in SYN
         cur_seq = random.randint(0, 0xffff_ffff)
         opts = (noop_option, noop_option, end_of_options)
         futs: List[Awaitable[None]] = []
@@ -35,6 +36,8 @@ class OptionSupportTest(BaseTest[IPAddressType]):
                                     window=4096, syn=True, options=opts))
             syn_res = await self._synchronize(cur_seq, timeout=30, test_stage=1)
         del opts
+
+        # Check whether connection was established and tear it down if necessary
         if isinstance(syn_res, TestResult):
             syn_res.status = TEST_FAIL
             syn_res.reason += " with options"  # type: ignore
@@ -43,6 +46,7 @@ class OptionSupportTest(BaseTest[IPAddressType]):
         await self.send(syn_res.make_reset(self.src, self.dst))
         await asyncio.sleep(10, loop=self._loop)
 
+        # Connection was established successfully, check for middlebox interference
         return self._detect_mboxes("header option(s) deleted", win=True,
                                    ack=True, up=True, opts=False) or TestResult(self, TEST_PASS)
 
@@ -59,6 +63,7 @@ class OptionSupportTest(BaseTest[IPAddressType]):
 
         opts = bytearray(icmp.quote[20:head_len])
         try:
+            # Lenient check: allow addition of new options, e.g. MSS, and (de-)duplication of existing ones
             return not {noop_option, end_of_options}.issubset(parse_options(opts))
         except ValueError:
             return True
@@ -73,8 +78,7 @@ class UnknownOptionTest(BaseTest[IPAddressType]):
     __slots__ = ()
 
     async def run(self) -> TestResult:
-        # Option kind 158 is currently reserved
-        # See https://www.iana.org/assignments/tcp-parameters/tcp-parameters.xhtml
+        # Establish connection with unknown option in SYN
         cur_seq = random.randint(0, 0xffff_ffff)
         opts = (self._UNK_OPT,)
         futs: List[Awaitable[None]] = []
@@ -95,6 +99,8 @@ class UnknownOptionTest(BaseTest[IPAddressType]):
                                     window=4096, syn=True, options=opts))
             syn_res = await self._synchronize(cur_seq, timeout=30, test_stage=1)
         del opts
+
+        # Check whether connection was established and tear it down if necessary
         if isinstance(syn_res, TestResult):
             syn_res.status = TEST_FAIL
             syn_res.reason += " with unknown option"  # type: ignore
@@ -103,6 +109,7 @@ class UnknownOptionTest(BaseTest[IPAddressType]):
         await self.send(syn_res.make_reset(self.src, self.dst))
         await asyncio.sleep(10, loop=self._loop)
 
+        # Connection was established successfully, check for middlebox interference
         return self._detect_mboxes("unknown header option deleted", win=True,
                                    ack=True, up=True, opts=False) or TestResult(self, TEST_PASS)
 
@@ -119,6 +126,7 @@ class UnknownOptionTest(BaseTest[IPAddressType]):
 
         opts = bytearray(icmp.quote[20:head_len])
         try:
+            # Lenient check: only require presence of unknown option
             return self._UNK_OPT not in parse_options(opts)
         except ValueError:
             return True
@@ -133,6 +141,7 @@ class IllegalLengthOptionTest(BaseTest[IPAddressType]):
     __slots__ = ()
 
     async def run(self) -> TestResult:
+        # Try to establish connection with illegal option in SYN
         cur_seq = random.randint(0, 0xffff_ffff)
         opts = (self._ILLEGAL_OPT,)
         futs: List[Awaitable[None]] = []
@@ -151,6 +160,7 @@ class IllegalLengthOptionTest(BaseTest[IPAddressType]):
             # TODO: change timeout?
             syn_res = await self.receive(timeout=30)
         except asyncio.TimeoutError:
+            # Ignoring the segment is acceptable, but must test reachability afterwards
             result = None
         else:
             is_rst = bool(syn_res.flags & 0x04)
@@ -166,11 +176,13 @@ class IllegalLengthOptionTest(BaseTest[IPAddressType]):
                 result = TestResult(self, TEST_PASS)
 
             if not is_rst:
+                # Tear connection down ourselves
                 await self.send(syn_res.make_reset(self.src, self.dst))
 
         if result is not None and result.status is not TEST_PASS:
             return result
 
+        # Check for middlebox interference before returning PASS result
         await asyncio.sleep(10, loop=self._loop)
         result = self._detect_mboxes("illegal header option deleted", win=True,
                                      ack=True, up=True, opts=False) or result
@@ -183,6 +195,7 @@ class IllegalLengthOptionTest(BaseTest[IPAddressType]):
         cur_seq = (cur_seq + 0x1fffd) % 0x1_0000_000
         await self.send(Segment(self.src, self.dst, seq=cur_seq, window=1024, syn=True))
 
+        # Check whether connection was established and tear it down if necessary
         cur_seq = (cur_seq + 1) % 0x1_0000_000
         try:
             # TODO: change timeout?
@@ -213,6 +226,7 @@ class IllegalLengthOptionTest(BaseTest[IPAddressType]):
             # Header options not included in quote
             return False
 
+        # Lenient check: only require presence of illegal option
         opts = bytearray(icmp.quote[20:head_len])
         try:
             for _ in parse_options(opts):

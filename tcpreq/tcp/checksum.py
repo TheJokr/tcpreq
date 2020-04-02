@@ -2,6 +2,7 @@ import itertools
 
 
 # Checksum is calculated in little endian order and converted via int.to_bytes at the end
+# See https://tools.ietf.org/html/rfc1071#page-3
 def calc_checksum(src_addr: bytes, dst_addr: bytes, *parts: bytes) -> bytes:
     # TCP Protocol Number: 6
     acc = (6 << 8)  # zero + PTCL/Next Header

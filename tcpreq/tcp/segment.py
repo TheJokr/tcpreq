@@ -19,14 +19,14 @@ class Segment(object):
 
     __slots__ = ("_head_len", "_raw", "_options")
 
-    # src, dst are (addr: IPAddressType, port: int) tuples. flags int takes precedence over bools.
+    # flags int takes precedence over bools
     def __init__(self, src: ScanHost[IPAddressType], dst: ScanHost[IPAddressType], *,
                  seq: int, window: int, ack_seq: int = 0, rsrvd: int = 0, cwr: bool = False,
                  ece: bool = False, urg: bool = False, ack: bool = False, psh: bool = False,
                  rst: bool = False, syn: bool = False, fin: bool = False, flags: int = None,
                  up: int = 0, options: Sequence[BaseOption] = (), payload: bytes = b'') -> None:
         opt_len = sum(len(o) for o in options)
-        head_rows = 5
+        head_rows = 5  # 20 bytes (see _TCP_HEAD)
         if opt_len:
             head_rows += math.ceil(opt_len / 4.0)
 
@@ -35,7 +35,7 @@ class Segment(object):
             flags = ((cwr << 7) | (ece << 6) | (urg << 5) | (ack << 4) |
                      (psh << 3) | (rst << 2) | (syn << 1) | fin)
 
-        self._head_len = head_rows * 4
+        self._head_len = head_rows * 4  # 4 bytes per row
         head = bytearray(self._head_len)
         try:
             self._TCP_HEAD.pack_into(head, 0, src.port, dst.port, seq, ack_seq,
@@ -76,7 +76,7 @@ class Segment(object):
                        up=up, options=options, payload=payload)
 
     def make_reset(self, src: ScanHost[IPAddressType], dst: ScanHost[IPAddressType]) -> "Segment":
-        # Per RFC 793bis, section 3.4, "Reset Generation", 1. and 2.
+        # Per https://tools.ietf.org/html/draft-ietf-tcpm-rfc793bis-16#page-28, "Reset Generation", 1. and 2.
         has_ack = self.flags & 0x10
         if has_ack:
             seq = self.ack_seq

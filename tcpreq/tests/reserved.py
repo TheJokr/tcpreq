@@ -11,10 +11,11 @@ from ..alp import ALP_MAP
 
 
 class ReservedFlagsTest(BaseTest[IPAddressType]):
-    """Test response to reserved flags being set."""
+    """Test response to reserved flags being set during handshake and normal operation."""
     __slots__ = ()
 
     async def run(self) -> TestResult:
+        # Establish connection with 3rd reserved flag set in SYN
         cur_seq = random.randint(0, 0xffff_ffff)
         futs: List[Awaitable[None]] = []
         for ttl in range(1, self._HOP_LIMIT + 1):
@@ -32,6 +33,8 @@ class ReservedFlagsTest(BaseTest[IPAddressType]):
             await self.send(Segment(self.src, self.dst, seq=cur_seq,
                                     window=4096, rsrvd=0b0100, syn=True))
             syn_res = await self._synchronize(cur_seq, timeout=30, test_stage=1)
+
+        # Check whether connection was established normally
         if isinstance(syn_res, TestResult):
             syn_res.status = TEST_FAIL
             syn_res.reason += " with reserved flag"  # type: ignore
@@ -43,9 +46,11 @@ class ReservedFlagsTest(BaseTest[IPAddressType]):
                 "Reserved flags not zeroed in reply to SYN during handshake with reserved flag"
             )
 
+        # Test reserved flags in ACK
         await self.send(syn_res.make_reply(self.src, self.dst, window=1024, rsrvd=0b0100, ack=True))
         await asyncio.sleep(10, loop=self._loop)
 
+        # Check for middlebox interference in reserved flags
         result = self._detect_mboxes("reserved flags reset")
         if result is not None:
             await self.send(syn_res.make_reset(self.src, self.dst))
@@ -67,6 +72,7 @@ class ReservedFlagsTest(BaseTest[IPAddressType]):
             else:
                 if (ack_res.flags == syn_res.flags and ack_res.seq == syn_res.seq and
                         ack_res.ack_seq == syn_res.ack_seq):
+                    # ACK was ignored, try to mitigate known causes
                     if rt == 0 and self.dst.port in ALP_MAP:
                         # Add ALP request to subsequent ACKs to counter TCP_DEFER_ACCEPT
                         alp = ALP_MAP[self.dst.port](self.src, self.dst)
@@ -92,6 +98,7 @@ class ReservedFlagsTest(BaseTest[IPAddressType]):
             if result is not None:
                 break
 
+        # Reset connection to be sure
         await self.send(ack_res.make_reset(self.src, self.dst))
         return result  # type: ignore
 
@@ -101,7 +108,5 @@ class ReservedFlagsTest(BaseTest[IPAddressType]):
             return False
 
         # 9th flag bit is used for an optional ECN extension
-        if (icmp.quote[12] & 0b1110) == 0b0100:
-            return False
-
-        return True
+        # Other reserved flags must keep their values
+        return (icmp.quote[12] & 0b1110) != 0b0100
