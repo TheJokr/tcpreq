@@ -1,7 +1,22 @@
-# tcpreq – TCP Requirements
+# tcpreq – Measuring TCP Specification Conformance
+
+tcpreq is a modular Framework for TCP Specification Conformance testing, enabling Implementors to test specific features of their individual TCP Stack implementation, as well as enabling Researchers to assess the state of TCP Conformance in the Internet. It was developed {by Leo Blöcher} at [COMSYS Network Architectures Group](https://www.comsys.rwth-aachen.de/research/network-architectures) of [RWTH Aachen University](https://www.rwth-aachen.de). tcpreq is released according to the MIT License terms.
+
+## Publications
+### Paper
+PAM 2020: [MUST, SHOULD, DON'T CARE: TCP Conformance in the Wild](https://arxiv.org/abs/2002.05400), International Conference on Passive and Active Network Measurement
+### Dataset
+PAM 2020: [Dataset to "MUST, SHOULD, DON’T CARE: TCP Conformance in the Wild"](https://doi.org/10.18154/RWTH-2020-00809)
+
+## Test Cases
+The basic requirements of a TCP Stack are defined in [RFC 793](https://tools.ietf.org/html/rfc793), the core TCP specification. Since its over 40 years of existence, it has accumulated over 25 accepted errata described in [RFC 793bis](https://datatracker.ietf.org/doc/draft-ietf-tcpm-rfc793bis/). All Test Cases are based on the requirements stated in RFC 793bis, and require active communication to the tested Host. The following Test Cases are available:
+
+Todo Leo: list test cases, state explicit MUST-# of 793bisDraft16
+
+## Middleboxes
+Middleboxes can alter TCP header information and thereby cause non-conformance, which should not be wrongly attributed to the probed host. tcpreq uses the [tracebox](https://doi.org/10.1145/2504730.2504757) approach to detect interfering middleboxes by sending and repeating its probes with increasing IP TTLs. In every test case, the first segment is sent multiple times with increasing TTL values from 1 to 30 in parallel while capturing ICMP time exceeded messages. To distinguish the replied messages and determine the hop count, the TTL is encoded in the IPv4 ID and in the TCP acknowledgment number, window size, and urgent pointer fields, which allows tcpreq to pinpoint and detect (non-)conformance within the end-to-end path if ICMP messages are issued by the intermediaries quoting the expired segment. Please note that alteration or removal of some of the encodings do not render the path or the specific hop non-conformant. A non-conformance is only attested, if the actual tested behavior was modified as visible through the expired segment. Depending on the specific test case, some of the fields are not used for the TTL encoding. For example, when testing for urgent pointer adherence, the TTL is not encoded in the urgent pointer field.
 
 ## Dependencies
-#### tcpreq
 - Python ≥ 3.6
 - Packages in `requirements.txt` (`pip install -r requirements.txt`)
 - Either `nftables` or `iptables`
@@ -9,7 +24,7 @@
 - *Optional*: `tcpdump` to record traces
 - *Development*: `pycodestyle` linter, `mypy` type checker
 
-## `tcpreq`: Measuring TCP Specification Conformance
+## Usage
 1) Choose an interface to run `tcpreq` on. Example: `eth1`.
 2) Set up the firewall rules preventing kernel interference.
    1) You will likely have to customize the user ID/name in the templates:
@@ -42,3 +57,7 @@ These can be granted with `setcap cap_net_admin,cap_net_raw+ep <path/to/python>`
 though this should probably only be done within a virtualenv.
 Without these capabilities in place, `tcpreq` must be run as root.
 In this case, the user ID above is 0 and the username is root.
+
+## Adding Test Cases
+
+Todo Leo: brief overview of implementing my own extension
