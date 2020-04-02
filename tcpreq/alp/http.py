@@ -5,7 +5,7 @@ from .base import BaseProtocol
 from ..types import IPAddressType
 
 
-# Version 1.1 only
+# HTTP 1.1 only
 class HTTPProtocol(BaseProtocol[IPAddressType]):
     ports: ClassVar[Tuple[int, ...]] = (80,)
     _TYPES: ClassVar[List[bytes]] = [
@@ -61,7 +61,7 @@ class HTTPProtocol(BaseProtocol[IPAddressType]):
             rem = length_hint - (len(res) + len(name))
             ret = True
             for idx, v in enumerate(vals):
-                rem -= len(v) + 2
+                rem -= len(v) + 2  # Add 2 for next separator (", ")
                 if rem <= 2:
                     break
             else:
@@ -76,6 +76,4 @@ class HTTPProtocol(BaseProtocol[IPAddressType]):
 
         return res + b"\r\n"
 
-    def push_data(self, data: bytes) -> None:
-        # HTTP is stateless (except for cookies), just ignore the response
-        pass
+    # No need to implement push_data: HTTP is stateless (except for cookies), response can be ignored

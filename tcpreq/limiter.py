@@ -6,6 +6,10 @@ class OutOfTokensError(Exception):
     pass
 
 
+# Every refill_interval seconds, refill_amount tokens are added to the bucket
+# up to a maximum of cap. A send operation removes tokens from the bucket.
+# The default (1 token per call) corresponds to a packet-based limiter.
+# See https://en.wikipedia.org/wiki/Token_bucket
 class TokenBucket(object):
     __slots__ = ("_tokens", "_cap", "_increment", "_interval", "_last_update")
 

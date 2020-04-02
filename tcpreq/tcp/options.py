@@ -78,6 +78,7 @@ class SizedOption(BaseOption):
 
 
 class MSSOption(SizedOption):
+    """SizedOption to negotiate the connection's maximum segment size (MSS)."""
     __slots__ = ()
 
     def __init__(self, mss: int) -> None:

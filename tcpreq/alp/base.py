@@ -5,6 +5,7 @@ from ..types import IPAddressType, ScanHost
 
 
 class BaseProtocol(Generic[IPAddressType]):
+    # MUST be overwritten in derived classes: ports for which to use this ALP
     ports: ClassVar[Tuple[int, ...]] = ()
 
     __slots__ = ("_src", "_dst")
@@ -15,8 +16,9 @@ class BaseProtocol(Generic[IPAddressType]):
 
     @abstractmethod
     def pull_data(self, length_hint: int = None) -> Optional[bytes]:
+        """Generate protocol-specific payload data, if possible."""
         pass
 
-    @abstractmethod
     def push_data(self, data: bytes) -> None:
+        """Optionally handle response payload data in stateful protocols."""
         pass

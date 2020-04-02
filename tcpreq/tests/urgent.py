@@ -22,6 +22,7 @@ class UrgentPointerTest(BaseTest[IPAddressType]):
         if self.dst.port not in ALP_MAP:
             return TestResult(self, TEST_UNK, 0, "Missing ALP module for port {}".format(self.dst.port))
 
+        # Establish the connection
         cur_seq = random.randint(0, 0xffff_ffff)
         await self.send(Segment(self.src, self.dst, seq=cur_seq, window=4096,
                                 syn=True, options=(self._MSS_OPT,)))
@@ -32,12 +33,15 @@ class UrgentPointerTest(BaseTest[IPAddressType]):
             return syn_res
         await self.send(syn_res.make_reply(self.src, self.dst, window=4096, ack=True))
 
+        # Generate _UDATA_LENGTH_HINT bytes of ALP payload data
         alp = ALP_MAP[self.dst.port](self.src, self.dst)
         req = alp.pull_data(self._UDATA_LENGTH_HINT)
         if req is None or len(req) > 1460:
             await self.send(syn_res.make_reset(self.src, self.dst))
             return TestResult(self, TEST_UNK, 1, "ALP data unavailable")
 
+        # Send payload as urgent data split over multiple segments
+        # First segment with increasing TTLs for middlebox detection, later ones just once
         req_len = len(req)
         chck_up = req_len.to_bytes(2, "big")
         chunk_size = req_len // 3
@@ -63,6 +67,7 @@ class UrgentPointerTest(BaseTest[IPAddressType]):
         await asyncio.wait(futs, loop=self._loop)
         del futs
 
+        # Lenient check: make sure target responds with a non-RST
         cur_seq = (cur_seq + len(chunks[-1])) % 0x1_0000_0000
         try:
             # TODO: change timeout?
@@ -79,6 +84,7 @@ class UrgentPointerTest(BaseTest[IPAddressType]):
             result = TestResult(self, TEST_PASS)
         await asyncio.sleep(10, loop=self._loop)
 
+        # Urgent data supported, check for middlebox interference
         return self._detect_mboxes("URG/UP modified", check_data=chck_up, win=False,
                                    ack=False, up=False, opts=True) or result
 
@@ -87,4 +93,5 @@ class UrgentPointerTest(BaseTest[IPAddressType]):
             # Urgent pointer not included in function call or in quote
             return False
 
+        # URG flag and UP field may not be modified
         return not ((icmp.quote[13] & 0x20) and icmp.quote[18:20] == data)

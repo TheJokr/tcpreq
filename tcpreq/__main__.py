@@ -33,6 +33,7 @@ _IPV6_DISC_NETS = (
 )
 
 
+# Select local IP address if not specified on the command line
 def _select_addrs() -> Generator[AnyIPAddress, None, None]:
     host = socket.gethostname()
 
@@ -78,8 +79,9 @@ def main() -> None:
         elif ipv6_bl is not None and isinstance(net, IPv6Network) and net not in ipv6_bl:
             ipv6_bl[net] = True
 
-    # Aggregate targets from multiple sources
-    # Filter targets by IP version and blacklist
+    # Aggregate targets from multiple sources and filter them by IP version and blacklist
+    # ScanHost instances do not consider their hostnames in equality checks,
+    # so lists are needed to hold discarded and filtered targets
     ipv4_set: Set[ScanHost[IPv4Address]] = set()
     ipv6_set: Set[ScanHost[IPv6Address]] = set()
     discarded_tgts: List[ScanHost] = []

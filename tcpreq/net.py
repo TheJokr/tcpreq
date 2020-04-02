@@ -53,6 +53,7 @@ else:
 
 class BaseTestMultiplexer(Generic[IPAddressType]):
     """Multiplex multiple TCP streams over a single raw IP socket."""
+    # Ignore connection after _RST_THRESHOLD attempted resets
     _RST_THRESHOLD: ClassVar[int] = 3
 
     @abstractmethod

@@ -12,6 +12,7 @@ class RSTACKTest(BaseTest[IPAddressType]):
     __slots__ = ()
 
     async def run(self) -> TestResult:
+        # Establish connection
         cur_seq = random.randint(0, 0xffff_ffff)
         await self.send(Segment(self.src, self.dst, seq=cur_seq, window=1024, syn=True))
 
@@ -20,6 +21,7 @@ class RSTACKTest(BaseTest[IPAddressType]):
         if isinstance(syn_res, TestResult):
             return syn_res
 
+        # Try RST using RST-ACK segment
         rstack_seg = syn_res.make_reply(self.src, self.dst, window=0, seq=-1, ack=True, rst=True)
         await self.send(rstack_seg)
 

@@ -18,6 +18,10 @@ class _BaseOutput(metaclass=ABCMeta):
     @abstractmethod
     def __call__(self, test_name: str, futures: Iterable["asyncio.Future[TestResult]"],
                  discarded: Iterable[ScanHost], filtered: Iterable[ScanHost]) -> None:
+        """Output the test results to the stream."""
+        # filtered hosts are duplicates (same IP and port) or included in the blacklist
+        # discarded hosts are invalid for other reasons (e.g., multi-/broadcast address)
+        # The latter also happens when the address type (e.g., IPv6) is not configured locally
         pass
 
 

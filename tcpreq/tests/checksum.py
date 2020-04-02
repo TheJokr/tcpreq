@@ -14,9 +14,9 @@ from ..tcp.checksum import calc_checksum
 
 
 # Make sure TCP RX/TX checksum offloading is disabled
-# E.g. ethtool -K <DEVNAME> rx off tx off on Linux
+# E.g. on Linux: ethtool -K <DEVNAME> rx off tx off
 class IncorrectChecksumTest(BaseTest[IPAddressType]):
-    """Evaluate response to incorrect checksums in SYNs and after handshake."""
+    """Evaluate response to incorrect checksums in initial SYNs and after handshake."""
     __slots__ = ()
 
     @staticmethod
@@ -24,6 +24,7 @@ class IncorrectChecksumTest(BaseTest[IPAddressType]):
         return random.randint(1, 0xffff).to_bytes(2, sys.byteorder)
 
     async def receive_vrfyres(self, timeout: float) -> Optional[Segment]:
+        """Variant of BaseTest.receive that allows checksum errors."""
         while timeout > 0:
             start = time.monotonic()
             data = await asyncio.wait_for(self.recv_queue.get(), timeout, loop=self._loop)
@@ -38,6 +39,7 @@ class IncorrectChecksumTest(BaseTest[IPAddressType]):
                 pass
             else:
                 if seg.flags & 0x02:
+                    # Collect ISNs for ISN predictability meta-test
                     self._isns.append((time.monotonic(), seg.seq))
                 return seg
 
@@ -64,6 +66,7 @@ class IncorrectChecksumTest(BaseTest[IPAddressType]):
         await asyncio.wait(futs, loop=self._loop)
         del futs
 
+        # Check that no connection has been established
         result = None
         cur_seq = (cur_seq + 1) % 0x1_0000_0000
         try:
@@ -87,12 +90,14 @@ class IncorrectChecksumTest(BaseTest[IPAddressType]):
 
             del res
 
+        # Check path for middlebox interference (e.g., checksum corrected)
         await asyncio.sleep(10, loop=self._loop)
         res_stat = 0
         for icmp in self.quote_queue:
             mbox_hop = decode_ttl(icmp.quote, icmp.hops, self._HOP_LIMIT)
             self._path.append((mbox_hop, icmp.icmp_src.compressed))
 
+            # None if not corrected, false if not enough data to verify, true if corrected
             verified = self._checksum_corrected(icmp, checksum=cs)
             if verified is None:
                 continue
@@ -145,6 +150,8 @@ class IncorrectChecksumTest(BaseTest[IPAddressType]):
         ack_seg._raw = bytes(seg_arr)
         del seg_arr
 
+        # Verify that invalid ACK doesn't finish 3WH
+        # Expected: Retransmission or RST
         await self.send(ack_seg)
         try:
             # TODO: change timeout?
@@ -202,8 +209,9 @@ class IncorrectChecksumTest(BaseTest[IPAddressType]):
         return cs_vrfy
 
 
+# IncorrectChecksumTest specialization with zero checksum
 class ZeroChecksumTest(IncorrectChecksumTest[IPAddressType]):
-    """Evaluate response to zeroed checksums in SYNs and after handshake."""
+    """Evaluate response to zeroed checksums in initial SYNs and after handshake."""
     __slots__ = ()
 
     @staticmethod
