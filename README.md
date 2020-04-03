@@ -2,7 +2,7 @@
 
 tcpreq is a modular framework for TCP Specification Conformance testing, enabling Implementors
 to test specific features of their individual TCP stack implementation, as well as enabling Researchers
-to assess the state of TCP conformance in the Internet. It was developed {by Leo Blöcher} at
+to assess the state of TCP conformance in the Internet. It was developed by Leo Blöcher at
 [COMSYS Network Architectures Group](https://www.comsys.rwth-aachen.de/research/network-architectures)
 of [RWTH Aachen University](https://www.rwth-aachen.de). tcpreq is released according to the MIT License terms.
 
@@ -18,6 +18,8 @@ the core TCP specification. In its over 40 years of existence, it has accumulate
 over 25 accepted errata culminating in [RFC 793bis](https://datatracker.ietf.org/doc/draft-ietf-tcpm-rfc793bis/).
 All test cases are based on the requirements stated in RFC 793bis, and require active communication
 to the tested Host. The following test cases are available:
+
+[Add brief description of "Default" and "ALPs" to aid table comprehension]
 
 | TCP Requirement | Default | ALPs | Implementation |
 | --------------- | ------- | ---- | -------------- |
