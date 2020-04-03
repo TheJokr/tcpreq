@@ -19,10 +19,8 @@ over 25 accepted errata culminating in [RFC 793bis](https://datatracker.ietf.org
 All test cases are based on the requirements stated in RFC 793bis, and require active communication
 to the tested Host. The following test cases are available:
 
-[Add brief description of "Default" and "ALPs" to aid table comprehension]
-
-| TCP Requirement | Default | ALPs | Implementation |
-| --------------- | ------- | ---- | -------------- |
+| TCP Requirement | Default \[1\] | ALPs \[2\] | Implementation \[3\] |
+| --------------- | ------------- | ---------- | -------------------- |
 | [MUST-2/3](https://tools.ietf.org/html/draft-ietf-tcpm-rfc793bis-16#page-9): The sender MUST generate \[the checksum\] and the receiver MUST check it | ✔ | ❌ | [`checksum.py`](tcpreq/tests/checksum.py) |
 | [Reset Processing](https://tools.ietf.org/html/draft-ietf-tcpm-rfc793bis-16#page-29): The RST flag in a segment is processed independently from other flags | ❌ | ❌ | [`rst_ack.py`](tcpreq/tests/rst_ack.py) |
 | [MUST-4](https://tools.ietf.org/html/draft-ietf-tcpm-rfc793bis-16#page-10): \[End of option list, no-operation, and maximum segment size\] MUST be supported | ✔ | ❌ | [`options.py`](tcpreq/tests/options.py): `OptionSupportTest` |
@@ -36,7 +34,10 @@ to the tested Host. The following test cases are available:
 | [MUST-30/31](https://tools.ietf.org/html/draft-ietf-tcpm-rfc793bis-16#page-40): TCP implementations MUST still include support for the urgent mechanism, A TCP MUST support a sequence of urgent data of any length | ✔ | ✔ | [`urgent.py`](tcpreq/tests/urgent.py) |
 | [MUST-8](https://tools.ietf.org/html/draft-ietf-tcpm-rfc793bis-16#page-19): A TCP implementation MUST use a clock-driven selection of initial sequence numbers | - | - | Meta test case: ISNs are collected and reported during handshakes |
 
-Details about the steps each test case performs can be found in the comments of the linked implementation.
+\[1\] Whether the test case is executed if there is no explicit selection on the command line.
+      The most invasive test cases as well as edge cases are excluded by default.  
+\[2\] Whether the test case uses the ALP modules described in [Extending tcpreq](#application-layer-protocols-alps).  
+\[3\] Source code for the test case with comments detailing the steps each test case performs.  
 
 ## Middleboxes
 Middleboxes can alter TCP header information and thereby cause non-conformance, which should not be
