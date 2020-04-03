@@ -103,6 +103,42 @@ within a tcpreq-specific virtualenv. Otherwise, other Python scripts may also op
 and intercept traffic. Without these capabilities in place, `tcpreq` must be run as root.
 In this case, the user ID above is 0 and the username is root.
 
+The JSON input format expects one object per line with keys for `ip`, `port`, and optionally `host`
+(used in some ALP modules). Other keys are ignored by tcpreq and passed through to the output module.
+The default (JSON Lines) output module dumps all the information available to tcpreq in one JSON object
+per line. A sample of JSON input and of the default output format can be found below:
+
+Input: `{"ip":"2001:db8::248:1893:25c8:1946","port":80,"host":"example.com","custom_rank":9107}`
+
+Output (comments and multi-line for readability):
+```json
+{
+  "test": "OptionSupportTest",
+  "timestamp": "2020-04-03T09:12:40Z",  # UTC
+  "src": {"ip":"2001:db8::1","port":49506,"host":null},
+  "dst": {"ip":"2001:db8::248:1893:25c8:1946","port":80,"host":"example.com","custom_rank":9107},
+  "isns": [
+    # Monotonic timestamp, ISN
+    [8602715.399565088, 3785391440],
+    [8602929.02997876,  1514644230]
+  ],
+  "status": "PASS",
+  "stage": null,
+  "reason": null,
+  "custom": null
+}
+```
+
+| `status` | Semantics                                                                      |
+| -------- | ------------------------------------------------------------------------------ |
+| PASS     | Test case succeeded                                                            |
+| UNK      | Conformance couldn't be determined. More information in `reason`.              |
+| FAIL     | Test case failed due to non-conformant behavior. More information in `reason`. |
+| ERR      | Python exception during test case execution. More information in `reason`.     |
+| FLTR     | Target IP is blacklisted or target IP and port are duplicates                  |
+| DISC     | Target IP address type is not supported (e.g., IPv6 on an IPv4-only host)      |
+| DEAD     | Target failed pre-test handshake (liveness check)                              |
+
 ## Extending tcpreq
 ### Test Cases
 In addition to the [included test cases](#test-cases), custom test cases can be created in the
@@ -129,7 +165,7 @@ in the included test cases. Both `tcpreq.alp.http` and `tcpreq.alp.tls` serve as
 By default, JSON ([lines](http://jsonlines.org/)) and console output are supported. To produce output in your
 preferred format, a custom output module can be added in `tcpreq.output`. Create a class derived from
 `_BaseOutput` and register it with the file extensions it is supposed to handle in `_OUTPUT_TBL`.
-Unknown/missing file extensions default to JSON lines. As with the ALP modules, the base class documents
+Unknown/missing file extensions default to JSON Lines. As with the ALP modules, the base class documents
 the interface and the included `_JSONLinesOutput` class serves as an example. Console output is only used
 in absence of an output file. 
 
