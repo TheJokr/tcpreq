@@ -86,7 +86,7 @@ class MSSOption(SizedOption):
 
     @classmethod
     def from_bytes(cls: Type[_T], data: bytearray) -> _T:
-        res = super(MSSOption, cls).from_bytes(data)
+        res: _T = super(MSSOption, cls).from_bytes(data)  # type: ignore
         if res.size != 4:
             raise ValueError("Illegal option length")
         return res

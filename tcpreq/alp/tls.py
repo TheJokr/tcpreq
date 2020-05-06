@@ -19,7 +19,7 @@ class TLSProtocol(BaseProtocol[IPAddressType]):
     __slots__ = ("_in_bio", "_out_bio", "_ssl")
 
     def __init__(self, src: ScanHost[IPAddressType], dst: ScanHost[IPAddressType]) -> None:
-        super(TLSProtocol, self).__init__(src, dst)  # type: ignore
+        super(TLSProtocol, self).__init__(src, dst)
 
         self._in_bio = ssl.MemoryBIO()
         self._out_bio = ssl.MemoryBIO()

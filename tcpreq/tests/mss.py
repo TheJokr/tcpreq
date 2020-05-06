@@ -31,8 +31,9 @@ class MSSSupportTest(BaseTest[IPAddressType]):
         futs: List[Awaitable[None]] = []
         for ttl in range(1, self._HOP_LIMIT + 1):
             futs.append(self.send(
-                Segment(self.src, self.dst, seq=cur_seq, window=0xffff, syn=True,  # type: ignore
-                        options=self._SYN_OPTS, **encode_ttl(ttl, win=False, ack=True, up=True, opts=False)),
+                Segment(self.src, self.dst, seq=cur_seq, window=0xffff,
+                        syn=True, options=self._SYN_OPTS,
+                        **encode_ttl(ttl, win=False, ack=True, up=True, opts=False)),  # type: ignore
                 ttl=ttl
             ))
         await asyncio.wait(futs, loop=self._loop)
@@ -156,8 +157,8 @@ class MissingMSSTest(BaseTest[IPAddressType]):
         futs: List[Awaitable[None]] = []
         for ttl in range(1, self._HOP_LIMIT + 1):
             futs.append(self.send(
-                Segment(self.src, self.dst, seq=cur_seq, window=0xffff, syn=True,  # type: ignore
-                        **encode_ttl(ttl, win=False, ack=True, up=True, opts=True)),
+                Segment(self.src, self.dst, seq=cur_seq, window=0xffff, syn=True,
+                        **encode_ttl(ttl, win=False, ack=True, up=True, opts=True)),  # type: ignore
                 ttl=ttl
             ))
         await asyncio.wait(futs, loop=self._loop)

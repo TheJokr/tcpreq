@@ -52,6 +52,7 @@ def _parse_nmap_xml(fpath: str) -> Generator[ScanHost, None, None]:
 
 def _parse_zmap_csv(fpath: str) -> Generator[ScanHost, None, None]:
     reader = csv.DictReader(open(fpath, newline=''))
+    assert reader.fieldnames is not None  # for mypy
     if not {"success", "saddr", "sport"}.issubset(reader.fieldnames):
         raise ValueError("Missing at least one required key: success, saddr, sport")
 

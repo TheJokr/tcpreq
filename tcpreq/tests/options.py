@@ -21,8 +21,8 @@ class OptionSupportTest(BaseTest[IPAddressType]):
         futs: List[Awaitable[None]] = []
         for ttl in range(1, self._HOP_LIMIT + 1):
             futs.append(self.send(
-                Segment(self.src, self.dst, seq=cur_seq, syn=True, options=opts,  # type: ignore
-                        **encode_ttl(ttl, win=True, ack=True, up=True, opts=False)),
+                Segment(self.src, self.dst, seq=cur_seq, syn=True, options=opts,
+                        **encode_ttl(ttl, win=True, ack=True, up=True, opts=False)),  # type: ignore
                 ttl=ttl
             ))
         await asyncio.wait(futs, loop=self._loop)
@@ -84,8 +84,8 @@ class UnknownOptionTest(BaseTest[IPAddressType]):
         futs: List[Awaitable[None]] = []
         for ttl in range(1, self._HOP_LIMIT + 1):
             futs.append(self.send(
-                Segment(self.src, self.dst, seq=cur_seq, syn=True, options=opts,  # type: ignore
-                        **encode_ttl(ttl, win=True, ack=True, up=True, opts=False)),
+                Segment(self.src, self.dst, seq=cur_seq, syn=True, options=opts,
+                        **encode_ttl(ttl, win=True, ack=True, up=True, opts=False)),  # type: ignore
                 ttl=ttl
             ))
         await asyncio.wait(futs, loop=self._loop)
@@ -147,8 +147,8 @@ class IllegalLengthOptionTest(BaseTest[IPAddressType]):
         futs: List[Awaitable[None]] = []
         for ttl in range(1, self._HOP_LIMIT + 1):
             futs.append(self.send(
-                Segment(self.src, self.dst, seq=cur_seq, syn=True, options=opts,  # type: ignore
-                        **encode_ttl(ttl, win=True, ack=True, up=True, opts=False)),
+                Segment(self.src, self.dst, seq=cur_seq, syn=True, options=opts,
+                        **encode_ttl(ttl, win=True, ack=True, up=True, opts=False)),  # type: ignore
                 ttl=ttl
             ))
         del opts

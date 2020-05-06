@@ -50,9 +50,9 @@ class UrgentPointerTest(BaseTest[IPAddressType]):
         cur_seq = (cur_seq + 1) % 0x1_0000_0000
         futs: List[Awaitable[None]] = []
         for ttl in range(1, self._HOP_LIMIT + 1):
-            futs.append(self.send(syn_res.make_reply(  # type: ignore
+            futs.append(self.send(syn_res.make_reply(
                 self.src, self.dst, seq=cur_seq, window=4096, urg=True, ack=True, up=req_len,
-                payload=chunks[0], **encode_ttl(ttl, win=False, ack=False, up=False, opts=True)
+                payload=chunks[0], **encode_ttl(ttl, win=False, ack=False, up=False, opts=True)  # type: ignore
             ), ttl=ttl))
         await asyncio.wait(futs, loop=self._loop)
 

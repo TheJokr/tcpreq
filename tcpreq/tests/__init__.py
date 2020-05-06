@@ -49,7 +49,7 @@ def parse_test_list(values: Optional[Iterable[str]]) -> Sequence[Type[BaseTest]]
             add = False
             v = v[1:]
 
-        sel: Tuple[Type[BaseTest], ...] = _ALL_TESTS if v == "*" else (_parse_test(v),)  # type: ignore
+        sel: Tuple[Type[BaseTest], ...] = _ALL_TESTS if v == "*" else (_parse_test(v),)
         if add:
             for t in sel:
                 if t not in res:
