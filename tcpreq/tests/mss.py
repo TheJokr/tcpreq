@@ -105,37 +105,40 @@ class MSSSupportTest(BaseTest[IPAddressType]):
         await self.send(seg.make_reset(self.src, self.dst))
         return result
 
-    def _quote_modified(self, icmp: ICMPQuote[IPAddressType], *, data: bytes = None) -> bool:
+    def _quote_diff(self, icmp: ICMPQuote[IPAddressType], *, data: bytes = None) \
+            -> Optional[Tuple[str, str]]:
         qlen = len(icmp.quote)
         if qlen < 20:
             # Header options not included in quote
-            return False
+            return None
 
         head_len = (icmp.quote[12] >> 2) & 0b00111100
         if qlen < head_len:
             # Header options not included in quote
-            return False
+            return None
 
         # MSS options must exactly match the ones in the original SYN
         # Other kinds of options may be added/removed freely
         idx = 0
         max_idx = len(self._SYN_OPTS) - 1
-        found = False
+        match = False
         opts = bytearray(icmp.quote[20:head_len])
         try:
             for opt in parse_options(opts):
                 if isinstance(opt, MSSOption):
-                    if not found and opt == self._SYN_OPTS[idx]:
+                    if not match and opt == self._SYN_OPTS[idx]:
                         if idx == max_idx:
-                            found = True
+                            match = True
                         else:
                             idx += 1
                     else:
-                        return True
+                        return "", opt.hex()
         except ValueError:
             pass
 
-        return not found
+        if match:
+            return None
+        return ",".join(opt.hex() for opt in self._SYN_OPTS[idx:]), ""
 
 
 class MissingMSSTest(BaseTest[IPAddressType]):
@@ -222,23 +225,28 @@ class MissingMSSTest(BaseTest[IPAddressType]):
         await self.send(seg.make_reset(self.src, self.dst))
         return result
 
-    def _quote_modified(self, icmp: ICMPQuote[IPAddressType], *, data: bytes = None) -> bool:
+    def _quote_diff(self, icmp: ICMPQuote[IPAddressType], *, data: bytes = None) \
+            -> Optional[Tuple[str, str]]:
         qlen = len(icmp.quote)
         if qlen < 20:
             # Header options not included in quote
-            return False
+            return None
 
         head_len = (icmp.quote[12] >> 2) & 0b00111100
         if qlen < head_len:
             # Header options not included in quote
-            return False
+            return None
 
         # MSS option may not be added
         opts = bytearray(icmp.quote[20:head_len])
         try:
-            return any(isinstance(opt, MSSOption) for opt in parse_options(opts))
+            for opt in parse_options(opts):
+                if isinstance(opt, MSSOption):
+                    return "", opt.hex()
         except ValueError:
-            return True
+            return "", opts.hex()
+
+        return None
 
 
 # Derive from MSSSupportTest to avoid code duplication

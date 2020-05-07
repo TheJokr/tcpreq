@@ -1,4 +1,4 @@
-from typing import ClassVar, Awaitable, List, Optional
+from typing import ClassVar, Awaitable, List, Tuple, Optional
 import random
 import asyncio
 
@@ -50,23 +50,28 @@ class OptionSupportTest(BaseTest[IPAddressType]):
         return self._detect_mboxes("header option(s) deleted", win=True,
                                    ack=True, up=True, opts=False) or TestResult(self, TEST_PASS)
 
-    def _quote_modified(self, icmp: ICMPQuote[IPAddressType], *, data: bytes = None) -> bool:
+    def _quote_diff(self, icmp: ICMPQuote[IPAddressType], *, data: bytes = None) \
+            -> Optional[Tuple[str, str]]:
         qlen = len(icmp.quote)
         if qlen < 20:
             # Header options not included in quote
-            return False
+            return None
 
         head_len = (icmp.quote[12] >> 2) & 0b00111100
         if qlen < head_len:
             # Header options not included in quote
-            return False
+            return None
 
         opts = bytearray(icmp.quote[20:head_len])
         try:
             # Lenient check: allow addition of new options, e.g. MSS, and (de-)duplication of existing ones
-            return not {noop_option, end_of_options}.issubset(parse_options(opts))
+            diff = {noop_option, end_of_options}.difference(parse_options(opts))
+            if diff:
+                return ",".join(opt.hex() for opt in diff), ""
         except ValueError:
-            return True
+            return "", opts.hex()
+
+        return None
 
 
 class UnknownOptionTest(BaseTest[IPAddressType]):
@@ -113,23 +118,27 @@ class UnknownOptionTest(BaseTest[IPAddressType]):
         return self._detect_mboxes("unknown header option deleted", win=True,
                                    ack=True, up=True, opts=False) or TestResult(self, TEST_PASS)
 
-    def _quote_modified(self, icmp: ICMPQuote[IPAddressType], *, data: bytes = None) -> bool:
+    def _quote_diff(self, icmp: ICMPQuote[IPAddressType], *, data: bytes = None) \
+            -> Optional[Tuple[str, str]]:
         qlen = len(icmp.quote)
         if qlen < 20:
             # Header options not included in quote
-            return False
+            return None
 
         head_len = (icmp.quote[12] >> 2) & 0b00111100
         if qlen < head_len:
             # Header options not included in quote
-            return False
+            return None
 
         opts = bytearray(icmp.quote[20:head_len])
         try:
             # Lenient check: only require presence of unknown option
-            return self._UNK_OPT not in parse_options(opts)
+            if self._UNK_OPT not in parse_options(opts):
+                return self._UNK_OPT.hex(), ""
         except ValueError:
-            return True
+            return "", opts.hex()
+
+        return None
 
 
 class IllegalLengthOptionTest(BaseTest[IPAddressType]):
@@ -215,16 +224,17 @@ class IllegalLengthOptionTest(BaseTest[IPAddressType]):
         await self.send(syn_res.make_reset(self.src, self.dst))
         return result
 
-    def _quote_modified(self, icmp: ICMPQuote[IPAddressType], *, data: bytes = None) -> bool:
+    def _quote_diff(self, icmp: ICMPQuote[IPAddressType], *, data: bytes = None) \
+            -> Optional[Tuple[str, str]]:
         qlen = len(icmp.quote)
         if qlen < 20:
             # Header options not included in quote
-            return False
+            return None
 
         head_len = (icmp.quote[12] >> 2) & 0b00111100
         if qlen < head_len:
             # Header options not included in quote
-            return False
+            return None
 
         # Lenient check: only require presence of illegal option
         opts = bytearray(icmp.quote[20:head_len])
@@ -233,6 +243,8 @@ class IllegalLengthOptionTest(BaseTest[IPAddressType]):
                 pass
         except ValueError:
             # parse_options should fail on parsing _ILLEGAL_OPT
-            return opts[:4] != bytes(self._ILLEGAL_OPT)
+            if opts[:4] != bytes(self._ILLEGAL_OPT):
+                return self._ILLEGAL_OPT.hex(), opts[:4].hex()
+            return None
 
-        return True
+        return self._ILLEGAL_OPT.hex(), ""

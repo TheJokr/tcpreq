@@ -1,4 +1,4 @@
-from typing import Awaitable, List
+from typing import Awaitable, List, Tuple, Optional
 import random
 import asyncio
 
@@ -107,11 +107,16 @@ class ReservedFlagsTest(BaseTest[IPAddressType]):
         await self.send(ack_res.make_reset(self.src, self.dst))
         return result  # type: ignore
 
-    def _quote_modified(self, icmp: ICMPQuote[IPAddressType], *, data: bytes = None) -> bool:
+    def _quote_diff(self, icmp: ICMPQuote[IPAddressType], *, data: bytes = None) \
+            -> Optional[Tuple[str, str]]:
         if len(icmp.quote) < 13:
             # Reserved flags not included in quote
-            return False
+            return None
 
         # 9th flag bit is used for an optional ECN extension
         # Other reserved flags must keep their values
-        return (icmp.quote[12] & 0b1110) != 0b0100
+        rsrvd = icmp.quote[12] & 0b1110
+        if rsrvd != 0b0100:
+            return "0b0100", f"{rsrvd:#06b}"
+
+        return None

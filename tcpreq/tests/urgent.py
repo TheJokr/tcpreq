@@ -1,4 +1,4 @@
-from typing import ClassVar, Awaitable, List, Optional
+from typing import ClassVar, Awaitable, List, Tuple, Optional
 import random
 import asyncio
 
@@ -88,10 +88,16 @@ class UrgentPointerTest(BaseTest[IPAddressType]):
         return self._detect_mboxes("URG/UP modified", check_data=chck_up, win=False,
                                    ack=False, up=False, opts=True) or result
 
-    def _quote_modified(self, icmp: ICMPQuote[IPAddressType], *, data: bytes = None) -> bool:
+    def _quote_diff(self, icmp: ICMPQuote[IPAddressType], *, data: bytes = None) \
+            -> Optional[Tuple[str, str]]:
         if data is None or len(icmp.quote) < 20:
             # Urgent pointer not included in function call or in quote
-            return False
+            return None
 
         # URG flag and UP field may not be modified
-        return not ((icmp.quote[13] & 0x20) and icmp.quote[18:20] == data)
+        urg = icmp.quote[13] & 0x20
+        up = icmp.quote[18:20]
+        if not (urg and up == data):
+            return f"0x20,{data.hex()}", f"{urg:#04x},{up.hex()}"
+
+        return None

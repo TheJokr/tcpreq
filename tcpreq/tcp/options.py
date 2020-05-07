@@ -23,6 +23,9 @@ class BaseOption(object):
     def __hash__(self) -> int:
         return self._raw.__hash__()
 
+    def hex(self) -> str:
+        return self._raw.hex()
+
 
 class _LegacyOption(BaseOption):
     """Class for the two option kinds without a length octet."""
