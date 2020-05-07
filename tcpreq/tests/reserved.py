@@ -85,8 +85,13 @@ class ReservedFlagsTest(BaseTest[IPAddressType]):
                         await self.send(syn_res.make_reply(self.src, self.dst, window=1024,
                                                            rsrvd=0b0100, ack=True, payload=req))
                     else:
-                        # Sent ACK acknowledges SYN-ACK already
-                        result = TestResult(self, TEST_FAIL, 1, "ACK with reserved flag ignored")
+                        # Sent ACK acknowledges SYN-ACK already, but due to TCP_DEFER_ACCEPT
+                        # we can only make a conclusive decision if we used ALP data
+                        if req:
+                            result = TestResult(self, TEST_FAIL, 1, "ACK with reserved flag ignored")
+                        else:
+                            result = TestResult(self, TEST_UNK, 1,
+                                                "Empty ACK with reserved flag ignored")
                 elif ack_res.flags & 0x04:
                     return TestResult(self, TEST_FAIL, 1, "RST in reply to ACK with reserved flag")
                 elif ack_res._raw[12] & 0b1110:
