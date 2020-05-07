@@ -45,10 +45,10 @@ class OutgoingPacket(Generic[IPAddressType]):
 
 
 class ICMPQuote(Generic[IPAddressType]):
-    __slots__ = ("icmp_src", "quote_src", "hops", "quote")
+    __slots__ = ("icmp_src", "quote_src", "hop", "quote")
 
-    def __init__(self, icmp_src: IPAddressType, quote_src: bytes, hops: int, quote: bytes) -> None:
+    def __init__(self, icmp_src: IPAddressType, quote_src: bytes, hop: int, quote: bytes) -> None:
         self.icmp_src: IPAddressType = icmp_src
         self.quote_src = quote_src
-        self.hops = hops
+        self.hop = hop
         self.quote = quote

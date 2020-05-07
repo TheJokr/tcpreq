@@ -48,7 +48,7 @@ def decode_ttl(quote: bytes, ttl_guess: int, hop_limit: int, *, win: bool = True
                         break
 
             if ttl is not None:
-                return ttl
+                return min(ttl, hop_limit)
 
     ttl_count: CounterType[int] = Counter()
     if ack:
