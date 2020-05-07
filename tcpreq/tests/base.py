@@ -1,5 +1,5 @@
 from abc import abstractmethod
-from typing import Generic, ClassVar, Awaitable, List, Tuple, Deque, Union, Optional
+from typing import Generic, ClassVar, Awaitable, Iterator, List, Tuple, Deque, Union, Optional
 import time
 import math
 import operator
@@ -127,30 +127,47 @@ class BaseTest(Generic[IPAddressType]):
 
     def _detect_mboxes(self, info: str, check_data: bytes = None, *, win: bool = True,
                        ack: bool = True, up: bool = True, opts: bool = True) -> Optional[TestResult]:
-        """Check for middlebox interference using (overwritten) _quote_modified predicate."""
-        result = None
-        res_stat = 0
-        for icmp in self.quote_queue:
-            mbox_hop = decode_ttl(icmp.quote, icmp.hops, self._HOP_LIMIT,
-                                  win=win, ack=ack, up=up, opts=opts)
-            self._path.append((mbox_hop, icmp.icmp_src.compressed))
+        """Check for middlebox interference using (overwritten) _quote_diff predicate."""
+        info = f" ({info})"
 
-            if not self._quote_modified(icmp, data=check_data) or (mbox_hop == 0 and res_stat >= 1):
+        result = None
+        mbox_hop = self._HOP_LIMIT + 1
+
+        for icmp in self.quote_queue:
+            hop = icmp.hop = decode_ttl(icmp.quote, icmp.hop, self._HOP_LIMIT,
+                                        win=win, ack=ack, up=up, opts=opts)
+            hop_unk = hop == 0
+
+            # Diff check is only necessary if it could improve the result
+            # I.e., if we don't have any result yet (result is None),
+            # or if hop is closer than the mbox the current result is based on
+            if (hop_unk and result is not None) or hop >= mbox_hop:
+                continue
+
+            diff = self._quote_diff(icmp, data=check_data)
+            if diff is None:  # quote matches sent segment
                 continue
 
             reason = "Middlebox interference detected"
-            reason += " at or before hop {0}" if mbox_hop > 0 else " at unknown hop"
-            reason += " ({1})"
-            result = TestResult(self, TEST_UNK, 1, reason.format(mbox_hop, info))
+            reason += " at unknown hop" if hop_unk else f" at or before hop {hop}"
+            reason += info
+            result = TestResult(self, TEST_UNK, 1, reason, custom={"diff": diff})
 
-            if mbox_hop > 0:
-                break
-            else:
-                res_stat = 1
+            if not hop_unk:
+                mbox_hop = hop
 
+        path_gen: Iterator[Tuple[int, str]] = ((icmp.hop, icmp.icmp_src.compressed)
+                                               for icmp in self.quote_queue)
+        if mbox_hop <= self._HOP_LIMIT:
+            path_gen = filter(lambda x: 1 <= x[0] <= mbox_hop, path_gen)
+
+        # Use extend instead of new list here so result is updated as well
+        self._path.extend(path_gen)
         self._path.sort(key=operator.itemgetter(0))
+
         return result
 
-    def _quote_modified(self, icmp: ICMPQuote[IPAddressType], *, data: bytes = None) -> bool:
+    def _quote_diff(self, icmp: ICMPQuote[IPAddressType], *, data: bytes = None) \
+            -> Optional[Tuple[str, str]]:
         """Determine whether the quoted segment has been modified along the path."""
-        return False
+        return None  # not modified

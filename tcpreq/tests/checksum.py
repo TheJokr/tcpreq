@@ -1,4 +1,4 @@
-from typing import Awaitable, List, Tuple, Optional
+from typing import Awaitable, Iterator, List, Tuple, Optional
 import sys
 import time
 import operator
@@ -91,37 +91,47 @@ class IncorrectChecksumTest(BaseTest[IPAddressType]):
             del res
 
         # Check path for middlebox interference (e.g., checksum corrected)
+        # Custom variant of BaseTest._detect_mboxes to distinguish between
+        # corrected and modified checksums
         await asyncio.sleep(10, loop=self._loop)
         res_stat = 0
+        mbox_hop = self._HOP_LIMIT + 1
+
         for icmp in self.quote_queue:
-            mbox_hop = decode_ttl(icmp.quote, icmp.hops, self._HOP_LIMIT)
-            self._path.append((mbox_hop, icmp.icmp_src.compressed))
+            hop = icmp.hop = decode_ttl(icmp.quote, icmp.hop, self._HOP_LIMIT)
+            hop_unk = hop == 0
+
+            if (hop_unk and res_stat >= 2) or (hop >= mbox_hop and res_stat >= 4):
+                continue
 
             # None if not corrected, false if not enough data to verify, true if corrected
             verified = self._checksum_corrected(icmp, checksum=cs)
             if verified is None:
                 continue
-            if mbox_hop > 0:
-                if not verified and res_stat >= 3:
+            elif not verified:
+                if (hop_unk and res_stat >= 1) or (hop >= mbox_hop and res_stat >= 3):
                     continue
-            elif res_stat >= 1 + verified:
-                continue
 
             reason = "Middlebox interference detected"
-            reason += " at or before hop {0}" if mbox_hop > 0 else " at unknown hop"
+            reason += " at unknown hop" if hop_unk else f" at or before hop {hop}"
             reason += " (checksum corrected)" if verified else " (checksum modified)"
-            result = TestResult(self, TEST_UNK, 1, reason.format(mbox_hop))
+            result = TestResult(self, TEST_UNK, 1, reason,
+                                custom={"diff": (cs.hex(), icmp.quote[16:18].hex())})
 
-            if mbox_hop > 0:
-                if verified:
-                    break
-                else:
-                    res_stat = 3
-            else:
-                res_stat = 1 + verified
-        del res_stat
+            # 1 for new result, 1 for verified, 2 for not hop_unk
+            res_stat = 1 + (not hop_unk) << 1 + verified
+            if res_stat >= 3:
+                mbox_hop = hop
 
+        path_gen: Iterator[Tuple[int, str]] = ((icmp.hop, icmp.icmp_src.compressed)
+                                               for icmp in self.quote_queue)
+        if mbox_hop <= self._HOP_LIMIT:
+            path_gen = filter(lambda x: 1 <= x[0] <= mbox_hop, path_gen)
+
+        self._path.extend(path_gen)
         self._path.sort(key=operator.itemgetter(0))
+        del res_stat, mbox_hop, path_gen
+
         if result is not None:
             return result
 
@@ -182,8 +192,8 @@ class IncorrectChecksumTest(BaseTest[IPAddressType]):
         await self.send(ack_res.make_reset(self.src, self.dst))
         return result
 
-    def _checksum_corrected(self, icmp: ICMPQuote[IPAddressType],
-                            *, checksum: bytes) -> Optional[bool]:
+    def _checksum_corrected(self, icmp: ICMPQuote[IPAddressType], *, checksum: bytes) \
+            -> Optional[bool]:
         qlen = len(icmp.quote)
         if qlen < 18:
             # Checksum not included in quote
