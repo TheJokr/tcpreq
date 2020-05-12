@@ -22,7 +22,8 @@ class BaseTest(Generic[IPAddressType]):
     # Make sure _HOP_LIMIT can be encoded into DO+options (39 possible non-zero values).
     assert 1 <= _HOP_LIMIT <= 39
 
-    __slots__ = ("src", "dst", "_isns", "recv_queue", "quote_queue", "send_queue", "_loop")
+    __slots__ = ("src", "dst", "_path", "_isns", "recv_queue",
+                 "quote_queue", "send_queue", "_loop")
 
     def __init__(self, src: ScanHost[IPAddressType], dst: ScanHost[IPAddressType],
                  *, loop: asyncio.AbstractEventLoop = None) -> None:
