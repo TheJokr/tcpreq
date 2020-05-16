@@ -14,6 +14,9 @@ from ..alp import ALP_MAP
 
 class MSSSupportTest(BaseTest[IPAddressType]):
     """Verify support for the MSS option."""
+    # Assuming instant responses, i.e., no waiting
+    MAX_PACKET_RATE = (BaseTest._HOP_LIMIT + 4) / 10.0
+
     # See "Measuring the Evolution of Transport Protocols in the Internet"
     # for measurements on minimum accepted MSS values
     # Update: CVE-2019-11477/11478/11479 makes testing with MSS <500 bytes infeasible
@@ -143,6 +146,9 @@ class MSSSupportTest(BaseTest[IPAddressType]):
 
 class MissingMSSTest(BaseTest[IPAddressType]):
     """Check fallback MSS value for validity."""
+    # Conceptually the same as MSSSupportTest
+    MAX_PACKET_RATE = (BaseTest._HOP_LIMIT + 4) / 10.0
+
     __slots__ = ()
 
     async def run(self) -> TestResult:

@@ -12,6 +12,9 @@ from ..alp import ALP_MAP
 
 class UrgentPointerTest(BaseTest[IPAddressType]):
     """Verify support for the TCP urgent mechanism."""
+    # Assuming instant responses, i.e., no waiting
+    MAX_PACKET_RATE = (BaseTest._HOP_LIMIT + 5) / 10.0
+
     _UDATA_LENGTH_HINT: ClassVar[int] = 500
     _MSS_OPT: ClassVar[MSSOption] = MSSOption(1460)
     assert 256 <= _UDATA_LENGTH_HINT <= 1400

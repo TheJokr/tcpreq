@@ -29,6 +29,7 @@ def _parse_test(value: str) -> Type[BaseTest]:
     try:
         cls = globals()[value]
         if issubclass(cls, BaseTest):
+            assert hasattr(cls, "MAX_PACKET_RATE")  # mypy doesn't catch missing ClassVars yet
             return cls  # type: ignore
         else:
             raise ValueError("'{}' is not a subclass of BaseTest".format(value))

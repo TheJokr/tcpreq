@@ -12,6 +12,9 @@ from ..tcp.options import BaseOption, SizedOption, parse_options
 
 class OptionSupportTest(BaseTest[IPAddressType]):
     """Verify support for the two legacy options (End of option list, NOOP)."""
+    # Assuming instant responses, i.e., no waiting
+    MAX_PACKET_RATE = (BaseTest._HOP_LIMIT + 2) / 10.0
+
     __slots__ = ()
 
     async def run(self) -> TestResult:
@@ -76,6 +79,9 @@ class OptionSupportTest(BaseTest[IPAddressType]):
 
 class UnknownOptionTest(BaseTest[IPAddressType]):
     """Test whether unknown options are ignored silently."""
+    # Conceptually the same as OptionSupportTest
+    MAX_PACKET_RATE = (BaseTest._HOP_LIMIT + 2) / 10.0
+
     # Option kind 158 is currently reserved
     # See https://www.iana.org/assignments/tcp-parameters/tcp-parameters.xhtml
     _UNK_OPT: ClassVar[SizedOption] = SizedOption(158, b"\x58\xfa\x89")
@@ -143,6 +149,9 @@ class UnknownOptionTest(BaseTest[IPAddressType]):
 
 class IllegalLengthOptionTest(BaseTest[IPAddressType]):
     """Verify responsiveness after sending an option with illegal length."""
+    # Assuming instant responses, i.e., no waiting
+    MAX_PACKET_RATE = (BaseTest._HOP_LIMIT + 2) / 10.0
+
     # Option kind 2 is assigned to MSS
     # See https://www.iana.org/assignments/tcp-parameters/tcp-parameters.xhtml
     _ILLEGAL_OPT: ClassVar[BaseOption] = BaseOption(b"\x02\x00\x02\xf1")

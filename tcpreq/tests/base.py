@@ -22,6 +22,10 @@ class BaseTest(Generic[IPAddressType]):
     # Make sure _HOP_LIMIT can be encoded into DO+options (39 possible non-zero values).
     assert 1 <= _HOP_LIMIT <= 39
 
+    # MUST be overwritten in derived classes: theoretical maximum packet rate (per second)
+    # Used to automatically chunk inputs based on packet rate limit
+    MAX_PACKET_RATE: ClassVar[float]
+
     __slots__ = ("src", "dst", "_path", "_isns", "recv_queue",
                  "quote_queue", "send_queue", "_loop")
 

@@ -9,6 +9,9 @@ from ..tcp import Segment
 
 class RSTACKTest(BaseTest[IPAddressType]):
     """Test response to resets with the ACK flag set."""
+    # Assuming instant responses, i.e., no waiting
+    MAX_PACKET_RATE = 3 / 10.0
+
     __slots__ = ()
 
     async def run(self) -> TestResult:

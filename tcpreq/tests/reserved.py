@@ -12,6 +12,9 @@ from ..alp import ALP_MAP
 
 class ReservedFlagsTest(BaseTest[IPAddressType]):
     """Test response to reserved flags being set during handshake and normal operation."""
+    # Assuming instant responses, i.e., no waiting
+    MAX_PACKET_RATE = (BaseTest._HOP_LIMIT + 5) / 10.0
+
     __slots__ = ()
 
     async def run(self) -> TestResult:

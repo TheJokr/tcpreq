@@ -17,6 +17,9 @@ from ..tcp.checksum import calc_checksum
 # E.g. on Linux: ethtool -K <DEVNAME> rx off tx off
 class IncorrectChecksumTest(BaseTest[IPAddressType]):
     """Evaluate response to incorrect checksums in initial SYNs and after handshake."""
+    # Assuming instant responses, i.e., no waiting
+    MAX_PACKET_RATE = (BaseTest._HOP_LIMIT + 3) / 10.0
+
     __slots__ = ()
 
     @staticmethod
