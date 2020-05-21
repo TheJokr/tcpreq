@@ -1,4 +1,4 @@
-from typing import Iterable, Sequence, List, Set, Dict, Optional, Generator
+from typing import Type, Iterable, Sequence, List, Tuple, Set, Dict, Optional, Generator
 import time
 import random
 import itertools
@@ -13,7 +13,8 @@ from .opts import parser
 from .output import get_output_module
 from .limiter import TokenBucket
 from .net import IPv4TestMultiplexer, IPv6TestMultiplexer
-from .tests import parse_test_list, overall_packet_rate, TestResult, TEST_FAIL
+from .tests import BaseTest, parse_test_list, overall_packet_rate, TestResult, TEST_FAIL
+from .tests.liveness import LivenessTest
 
 # Illegal IPv4 destinations (includes broadcast address)
 # See https://www.iana.org/assignments/iana-ipv4-special-registry/iana-ipv4-special-registry.xhtml
@@ -133,7 +134,11 @@ def main() -> None:
     ipv6_plex = None if ipv6_src is None else IPv6TestMultiplexer(ipv6_src, limiter, loop=loop)
 
     try:
-        active_tests = parse_test_list(args.tests)
+        pairs: Iterable[Tuple[Type[BaseTest], Type[BaseTest]]] = zip(itertools.repeat(LivenessTest),
+                                                                     parse_test_list(args.tests))
+        active_tests = [test for pair in pairs for test in pair]
+        active_tests.append(LivenessTest)  # Additional final liveness test
+        del pairs
     except ValueError as e:
         parser.error(str(e))
         return  # not strictly necessary, but helps type checkers
@@ -167,12 +172,12 @@ def main() -> None:
                 if isinstance(tgt.ip, IPv4Address):
                     t = test(ipv4_host, tgt, loop=loop)  # type: ignore
                     ipv4_plex.register_test(t)  # type: ignore
-                    fut = loop.create_task(t.run_with_reachability())
+                    fut = loop.create_task(t.run())
                     fut.add_done_callback(lambda f, t=t: ipv4_plex.unregister_test(t))  # type: ignore
                 else:
                     t = test(ipv6_host, tgt, loop=loop)  # type: ignore
                     ipv6_plex.register_test(t)  # type: ignore
-                    fut = loop.create_task(t.run_with_reachability())
+                    fut = loop.create_task(t.run())
                     fut.add_done_callback(lambda f, t=t: ipv6_plex.unregister_test(t))  # type: ignore
 
                 tgt_futs[tgt].append(fut)

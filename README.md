@@ -149,7 +149,6 @@ Output (comments and multi-line for readability):
 | ERR      | Python exception during test case execution. More information in `reason`.     |
 | FLTR     | Target IP is blacklisted or target IP and port are duplicates                  |
 | DISC     | Target IP address type is not supported (e.g., IPv6 on an IPv4-only host)      |
-| DEAD     | Target failed pre-test handshake (liveness check)                              |
 
 ## Extending tcpreq
 ### Test Cases
