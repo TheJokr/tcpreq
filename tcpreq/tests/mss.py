@@ -27,7 +27,7 @@ class MSSSupportTest(BaseTest[IPAddressType]):
 
     async def run(self) -> TestResult:
         if self.dst.port not in ALP_MAP:
-            return TestResult(self, TEST_UNK, 0, "Missing ALP module for port {}".format(self.dst.port))
+            return TestResult(self, TEST_UNK, 0, f"Missing ALP module for port {self.dst.port}")
 
         # Establish connection with specific MSS option(s)
         cur_seq = random.randint(0, 0xffff_ffff)
@@ -153,7 +153,7 @@ class MissingMSSTest(BaseTest[IPAddressType]):
 
     async def run(self) -> TestResult:
         if self.dst.port not in ALP_MAP:
-            return TestResult(self, TEST_UNK, 0, "Missing ALP module for port {}".format(self.dst.port))
+            return TestResult(self, TEST_UNK, 0, f"Missing ALP module for port {self.dst.port}")
 
         # Defaults defined in RFC 793bis
         if isinstance(self.dst.ip, IPv4Address):

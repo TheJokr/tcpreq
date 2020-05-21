@@ -9,5 +9,5 @@ from .tls import TLSProtocol
 ALP_MAP: Dict[int, Type[BaseProtocol]] = {}
 for proto in BaseProtocol.__subclasses__():
     for port in proto.ports:
-        assert port not in ALP_MAP, "Port {} is assigned to multiple ALP classes".format(port)
+        assert port not in ALP_MAP, f"Port {port} is assigned to multiple ALP classes"
         ALP_MAP[port] = proto  # type: ignore

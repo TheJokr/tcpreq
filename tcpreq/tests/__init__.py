@@ -32,9 +32,9 @@ def _parse_test(value: str) -> Type[BaseTest]:
             assert hasattr(cls, "MAX_PACKET_RATE")  # mypy doesn't catch missing ClassVars yet
             return cls  # type: ignore
         else:
-            raise ValueError("'{}' is not a subclass of BaseTest".format(value))
+            raise ValueError(f"'{value}' is not a subclass of BaseTest")
     except KeyError as e:
-        raise ValueError("'{}' is not a member of {}".format(value, __name__)) from e
+        raise ValueError(f"'{value}' is not a member of {__name__}") from e
 
 
 def parse_test_list(values: Optional[Iterable[str]]) -> Sequence[Type[BaseTest]]:

@@ -44,13 +44,13 @@ def _select_addrs() -> Generator[AnyIPAddress, None, None]:
         if not addrs:
             continue
 
-        print("Available IPv{} addresses:".format(v))
-        print("\n".join("{}) ".format(idx + 1) + a for idx, a in enumerate(addrs)))
+        print(f"Available IPv{v} addresses:")
+        print("\n".join(f"{idx + 1}) " + a for idx, a in enumerate(addrs)))
 
         sel = 0
         while not 1 <= sel <= len(addrs):
             try:
-                sel = int(input("Please select an IPv{} address [1-{}]: ".format(v, len(addrs))))
+                sel = int(input(f"Please select an IPv{v} address [1-{len(addrs)}]: "))
             except (EOFError, ValueError):
                 print()
                 break

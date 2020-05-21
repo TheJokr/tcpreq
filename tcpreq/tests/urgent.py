@@ -23,7 +23,7 @@ class UrgentPointerTest(BaseTest[IPAddressType]):
 
     async def run(self) -> TestResult:
         if self.dst.port not in ALP_MAP:
-            return TestResult(self, TEST_UNK, 0, "Missing ALP module for port {}".format(self.dst.port))
+            return TestResult(self, TEST_UNK, 0, f"Missing ALP module for port {self.dst.port}")
 
         # Establish the connection
         cur_seq = random.randint(0, 0xffff_ffff)
