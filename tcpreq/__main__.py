@@ -1,4 +1,4 @@
-from typing import Type, Sequence, List, Set, Optional, Generator
+from typing import Iterable, Sequence, List, Set, Dict, Optional, Generator
 import time
 import random
 import itertools
@@ -13,10 +13,7 @@ from .opts import parser
 from .output import get_output_module
 from .limiter import TokenBucket
 from .net import IPv4TestMultiplexer, IPv6TestMultiplexer
-from .tests import BaseTest, parse_test_list, TestResult
-
-# Use a random ephemeral port as source
-_BASE_PORT = random.randint(49152, 61000)
+from .tests import parse_test_list, overall_packet_rate, TestResult
 
 # Illegal IPv4 destinations (includes broadcast address)
 # See https://www.iana.org/assignments/iana-ipv4-special-registry/iana-ipv4-special-registry.xhtml
@@ -31,6 +28,17 @@ _IPV4_DISC_NETS = (
 _IPV6_DISC_NETS = (
     IPv6Network("::/128"), IPv6Network("2001:db8::/32"), IPv6Network("2001::/23")
 )
+
+
+# Starting from a random ephemeral port, cycle port numbers indefinitely
+def _port_seq(start: int = None) -> Generator[int, None, None]:
+    if start is None or start < 49152 or start > 64000:
+        start = random.randint(49152, 61000)
+    while True:
+        yield from range(start, 0x1_0000)
+
+
+_PORT_SEQ = _port_seq()
 
 
 # Select local IP address if not specified on the command line
@@ -79,36 +87,37 @@ def main() -> None:
         elif ipv6_bl is not None and isinstance(net, IPv6Network) and net not in ipv6_bl:
             ipv6_bl[net] = True
 
+    duplicate_filter: Set[ScanHost] = set()
+    output_mod = get_output_module(args.output)
+
     # Aggregate targets from multiple sources and filter them by IP version and blacklist
-    # ScanHost instances do not consider their hostnames in equality checks,
-    # so lists are needed to hold discarded and filtered targets
-    ipv4_set: Set[ScanHost[IPv4Address]] = set()
-    ipv6_set: Set[ScanHost[IPv6Address]] = set()
-    discarded_tgts: List[ScanHost] = []
-    filtered_tgts: List[ScanHost] = []
-    for tgt in itertools.chain(args.target, itertools.chain.from_iterable(args.nmap),
-                               itertools.chain.from_iterable(args.zmap),
-                               itertools.chain.from_iterable(args.json)):
+    # Discarded and filtered targets are output immediately to allow their memory to be freed
+    def target_filter(tgt: ScanHost) -> bool:
         if isinstance(tgt.ip, IPv4Address):
             if ipv4_bl is None or any(tgt.ip in net for net in _IPV4_DISC_NETS) or tgt.ip.is_multicast:
-                discarded_tgts.append(tgt)
-            elif tgt.ip in ipv4_bl or tgt in ipv4_set:
-                filtered_tgts.append(tgt)
-            else:
-                ipv4_set.add(tgt)
+                output_mod.discarded_target(tgt)
+                return False
+            elif tgt.ip in ipv4_bl or tgt in duplicate_filter:
+                output_mod.filtered_target(tgt)
+                return False
         elif isinstance(tgt.ip, IPv6Address):
             if ipv6_bl is None or any(tgt.ip in net for net in _IPV6_DISC_NETS) or tgt.ip.is_multicast:
-                discarded_tgts.append(tgt)
-            elif tgt.ip in ipv6_bl or tgt in ipv6_set:
-                filtered_tgts.append(tgt)
-            else:
-                ipv6_set.add(tgt)
+                output_mod.discarded_target(tgt)
+                return False
+            elif tgt.ip in ipv6_bl or tgt in duplicate_filter:
+                output_mod.filtered_target(tgt)
+                return False
+        else:
+            raise ValueError("tgt is neither IPv4 nor IPv6")
 
-    ipv4_tgts = list(ipv4_set)
-    ipv6_tgts = list(ipv6_set)
-    del ipv4_bl, ipv6_bl, ipv4_set, ipv6_set
-    if not ipv4_tgts and not ipv6_tgts:
-        parser.error("at least one valid target is required")
+        duplicate_filter.add(tgt)
+        return True
+
+    # Filtering happens lazily within this generator (whenever a new chunk is requested)
+    tgt_gen: Iterable[ScanHost] = filter(target_filter, itertools.chain(
+        args.target, itertools.chain.from_iterable(args.nmap),
+        itertools.chain.from_iterable(args.zmap), itertools.chain.from_iterable(args.json)
+    ))
 
     # Setup sockets/multiplexers
     # Both multiplexers share a token bucket with a precision of 1/8th of a second
@@ -118,39 +127,59 @@ def main() -> None:
     ipv4_plex = None if ipv4_src is None else IPv4TestMultiplexer(ipv4_src, limiter, loop=loop)
     ipv6_plex = None if ipv6_src is None else IPv6TestMultiplexer(ipv6_src, limiter, loop=loop)
 
-    # Run tests sequentially
     try:
         active_tests = parse_test_list(args.tests)
     except ValueError as e:
         parser.error(str(e))
-    output_mod = get_output_module(args.output)
-    for idx, test in enumerate(active_tests):
-        all_futs: List["asyncio.Future[TestResult]"] = []
-        random.shuffle(ipv4_tgts)
-        random.shuffle(ipv6_tgts)
-        ipv4_host = None if ipv4_src is None else ScanHost(ipv4_src, _BASE_PORT + idx)
-        ipv6_host = None if ipv6_src is None else ScanHost(ipv6_src, _BASE_PORT + idx)
+        return  # not strictly necessary, but helps type checkers
 
-        # Passing the test as a default parameter to the lambda ensures
-        # that the variable is not overwritten by further iterations of the loop
-        for tgt in ipv4_tgts:
-            t = test(ipv4_host, tgt, loop=loop)  # type: ignore
-            ipv4_plex.register_test(t)  # type: ignore
-            fut = loop.create_task(t.run_with_reachability())
-            fut.add_done_callback(lambda f, t=t: ipv4_plex.unregister_test(t))  # type: ignore
-            all_futs.append(fut)
+    # Run tests sequentially for chunks of targets such that they don't
+    # run into the packet rate limit. Since MAX_PACKET_RATE is generally
+    # an overestimation, we do not include a safety buffer here.
+    chunksize = round(args.rate / overall_packet_rate(active_tests))
+    chunk_gen = (list(itertools.islice(tgt_gen, chunksize)) for _ in itertools.repeat(None))
 
-        for tgt in ipv6_tgts:
-            t = test(ipv6_host, tgt, loop=loop)  # type: ignore
-            ipv6_plex.register_test(t)  # type: ignore
-            fut = loop.create_task(t.run_with_reachability())
-            fut.add_done_callback(lambda f, t=t: ipv6_plex.unregister_test(t))  # type: ignore
-            all_futs.append(fut)
+    first = True
+    for chunk in chunk_gen:
+        output_mod.flush()  # chunk creation may have triggered new DESC/FLTR outputs
+        if not chunk:
+            if first:
+                parser.error("at least one valid target is required")
+            break  # chunk is empty -> tgt_gen is empty -> all targets have been processed
 
-        print("Running", test.__name__)
-        loop.run_until_complete(asyncio.wait(all_futs, loop=loop))
-        output_mod(test.__name__, all_futs, discarded_tgts, filtered_tgts)
-        time.sleep(5)
+        first = False
+        tgt_futs: Dict[ScanHost, List["asyncio.Future[TestResult]"]] = {tgt: [] for tgt in chunk}
+        for test in active_tests:
+            all_futs: List["asyncio.Future[TestResult]"] = []
+            random.shuffle(chunk)
+            src_port = next(_PORT_SEQ)
+            ipv4_host = None if ipv4_src is None else ScanHost(ipv4_src, src_port)
+            ipv6_host = None if ipv6_src is None else ScanHost(ipv6_src, src_port)
+
+            # Passing the test as a default parameter to the lambda ensures
+            # that the variable is not overwritten by further iterations of the loop
+            for tgt in chunk:
+                if isinstance(tgt.ip, IPv4Address):
+                    t = test(ipv4_host, tgt, loop=loop)  # type: ignore
+                    ipv4_plex.register_test(t)  # type: ignore
+                    fut = loop.create_task(t.run_with_reachability())
+                    fut.add_done_callback(lambda f, t=t: ipv4_plex.unregister_test(t))  # type: ignore
+                else:
+                    t = test(ipv6_host, tgt, loop=loop)  # type: ignore
+                    ipv6_plex.register_test(t)  # type: ignore
+                    fut = loop.create_task(t.run_with_reachability())
+                    fut.add_done_callback(lambda f, t=t: ipv6_plex.unregister_test(t))  # type: ignore
+
+                tgt_futs[tgt].append(fut)
+                all_futs.append(fut)
+
+            print("Running", test.__name__)
+            loop.run_until_complete(asyncio.wait(all_futs, loop=loop))
+            time.sleep(3)
+
+        for tgt, results in tgt_futs.items():
+            output_mod(tgt, active_tests, results)
+        output_mod.flush()
 
 
 if __name__ == "__main__":

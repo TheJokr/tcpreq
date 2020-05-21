@@ -61,3 +61,7 @@ def parse_test_list(values: Optional[Iterable[str]]) -> Sequence[Type[BaseTest]]
                     del res[t]
 
     return [i[0] for i in sorted(res.items(), key=lambda x: x[1])]
+
+
+def overall_packet_rate(tests: Iterable[Type[BaseTest]]) -> float:
+    return max(map(lambda t: t.MAX_PACKET_RATE, tests))
