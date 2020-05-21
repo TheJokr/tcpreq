@@ -74,7 +74,7 @@ class _JSONLinesOutput(_StreamOutput):
 
     def __call__(self, target: ScanHost, tests: Sequence[Type[BaseTest]],
                  results: Sequence["asyncio.Future[TestResult]"]) -> None:
-        assert len(tests) == len(results)
+        assert len(tests) >= len(results)
         out = target.raw.copy()
         out_res = out["results"] = []
 
@@ -120,7 +120,7 @@ class _PrintOutput(_BaseOutput):
 
     def __call__(self, target: ScanHost, tests: Sequence[Type[BaseTest]],
                  results: Sequence["asyncio.Future[TestResult]"]) -> None:
-        assert len(tests) == len(results)
+        assert len(tests) >= len(results)
         thead = self._target_head(target)
 
         for t, f in zip(tests, results):

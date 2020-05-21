@@ -26,6 +26,9 @@ class BaseTest(Generic[IPAddressType]):
     # Used to automatically chunk inputs based on packet rate limit
     MAX_PACKET_RATE: ClassVar[float]
 
+    # MAY be overwritten in derived classes: whether to skip later tests after this one fails
+    FAIL_EARLY: ClassVar[bool] = False
+
     __slots__ = ("src", "dst", "_path", "_isns", "recv_queue",
                  "quote_queue", "send_queue", "_loop")
 

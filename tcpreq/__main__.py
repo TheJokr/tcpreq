@@ -13,7 +13,7 @@ from .opts import parser
 from .output import get_output_module
 from .limiter import TokenBucket
 from .net import IPv4TestMultiplexer, IPv6TestMultiplexer
-from .tests import parse_test_list, overall_packet_rate, TestResult
+from .tests import parse_test_list, overall_packet_rate, TestResult, TEST_FAIL
 
 # Illegal IPv4 destinations (includes broadcast address)
 # See https://www.iana.org/assignments/iana-ipv4-special-registry/iana-ipv4-special-registry.xhtml
@@ -65,6 +65,11 @@ def _select_addrs() -> Generator[AnyIPAddress, None, None]:
         else:
             print()
             yield cls(addrs[sel - 1])  # type: ignore
+
+
+# Result is considered failed if it would yield an ERR or FAIL output
+def result_not_failed(fut: "asyncio.Future[TestResult]") -> bool:
+    return fut.cancelled() or (fut.exception() is None and fut.result().status is not TEST_FAIL)
 
 
 # Make sure to prevent the kernel TCP stack from interfering
@@ -175,6 +180,10 @@ def main() -> None:
 
             print("Running", test.__name__)
             loop.run_until_complete(asyncio.wait(all_futs, loop=loop))
+
+            if test.FAIL_EARLY:
+                # Skip further tests for targets with a failure in the current test
+                chunk = [tgt for tgt, fut in zip(chunk, all_futs) if result_not_failed(fut)]
             time.sleep(3)
 
         for tgt, results in tgt_futs.items():
