@@ -87,8 +87,8 @@ when testing for urgent pointer adherence, the TTL is not encoded in the urgent 
 4) Run `python -m tcpreq` and wait for it to finish.
    See `python -m tcpreq -h` for details on its CLI.
    - `-B <eth1's IP address>` to set the IP address
-   - `-r 100k` to limit tcpreq to 100 000 packets per second
-   - `-b <path/to/blacklist>` to enforce a blacklist (in CIDR notation)
+   - `-r 10k` to limit tcpreq to 10 000 packets per second
+   - `-b <path/to/blacklist>` to enforce a blacklist (in CIDR notation, like ZMap)
    - `-T *` to add all test cases, `-T ZeroChecksumTest` to add just the `ZeroChecksumTest`,
      `-T !ZeroChecksumTest` to remove the `ZeroChecksumTest` to/from the selection of test cases
    - `-o <path/to/results.json>` to specify the output file name
@@ -113,19 +113,31 @@ Input: `{"ip":"2001:db8::248:1893:25c8:1946","port":80,"host":"example.com","cus
 Output (comments and multi-line for readability):
 ```json
 {
-  "test": "OptionSupportTest",
-  "timestamp": "2020-04-03T09:12:40Z",  # UTC
-  "src": {"ip":"2001:db8::1","port":49506,"host":null},
-  "dst": {"ip":"2001:db8::248:1893:25c8:1946","port":80,"host":"example.com","custom_rank":9107},
-  "isns": [
-    # Monotonic timestamp, ISN
-    [8602715.399565088, 3785391440],
-    [8602929.02997876,  1514644230]
-  ],
-  "status": "PASS",
-  "stage": null,
-  "reason": null,
-  "custom": null
+  "ip": "2001:db8::248:1893:25c8:1946",
+  "port": 80,
+  "host": "example.com",
+  "custom_rank": 9107,
+  "results": [
+    {
+      "test": "OptionSupportTest",
+      "timestamp": "2020-04-03T09:12:40Z",  # UTC
+      "src": {"ip":"2001:db8::1", "port": 49506, "host": null},
+      "path": [
+        # Hop count, IP
+        [1, "2001:db8::7925:ca2c:bb71:0c22"],
+        [3, "2001:db8::248:1893:0:1"]
+      ],
+      "isns": [
+        # Monotonic timestamp, ISN
+        [8602715.399565088, 3785391440],
+        [8602929.02997876,  1514644230]
+      ],
+      "status": "PASS",
+      "stage": null,
+      "reason": null,
+      "custom": null
+    }
+  ]
 }
 ```
 
@@ -156,7 +168,7 @@ default test cases in that file.
 
 ### Application-layer Protocols (ALPs)
 Some of tcpreqs test cases require payload data, which is provided by pluggable ALP instances.
-Two popular ALPs come included in tcpreq: HTTP (from scratch) and TLS/SSL (via Python's `ssl` module).
+Two popular ALPs come included in tcpreq: HTTP (from scratch) and TLS/SSL (via Python's `ssl` module/OpenSSL).
 Additional ALPs can be added by creating classes derived from `BaseProtocol` in `tcpreq.alp` and importing
 them in the module's `__init__.py`. The documentation in the base class explains the interface currently used
 in the included test cases. Both `tcpreq.alp.http` and `tcpreq.alp.tls` serve as examples.
@@ -164,7 +176,7 @@ in the included test cases. Both `tcpreq.alp.http` and `tcpreq.alp.tls` serve as
 ### Input/Output Formats
 By default, JSON ([lines](http://jsonlines.org/)) and console output are supported. To produce output in your
 preferred format, a custom output module can be added in `tcpreq.output`. Create a class derived from
-`_BaseOutput` and register it with the file extensions it is supposed to handle in `_OUTPUT_TBL`.
+`_StreamOutput` and register it with the file extensions it is supposed to handle in `_OUTPUT_TBL`.
 Unknown/missing file extensions default to JSON Lines. As with the ALP modules, the base class documents
 the interface and the included `_JSONLinesOutput` class serves as an example. Console output is only used
 in absence of an output file. 
